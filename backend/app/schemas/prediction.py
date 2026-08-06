@@ -15,6 +15,7 @@ class DailyPayload(BaseModel):
     calendar_events: int
     high_priority_tasks: int
     total_workload: int = 0
+    monthly_budget: float | None = None
     entry_date: date | None = None
 
 

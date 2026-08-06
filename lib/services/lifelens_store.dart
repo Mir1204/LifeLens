@@ -15,7 +15,7 @@ class LifeLensStore extends ChangeNotifier {
 
   static const defaultBackendUrl = 'http://172.20.10.2:8000';
 
-  final AppUser user;
+  AppUser user;
   final LocalDatabaseService database = LocalDatabaseService();
   final NotificationService notificationService = NotificationService();
 
@@ -44,8 +44,7 @@ class LifeLensStore extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    backendUrl =
-        await database.setting('backend_url') ?? defaultBackendUrl;
+    backendUrl = await database.setting('backend_url') ?? defaultBackendUrl;
 
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
@@ -69,8 +68,29 @@ class LifeLensStore extends ChangeNotifier {
 
   Future<void> addExpense(ExpenseEntry entry) async {
     remoteScores = null;
-    expenses.insert(0, entry);
-    await database.insertExpense(user.userId, entry);
+    final id = await database.insertExpense(user.userId, entry);
+    expenses.insert(0, entry.copyWith(id: id));
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
+  Future<void> updateExpense(ExpenseEntry updated) async {
+    if (updated.id == null) return;
+    remoteScores = null;
+    final index = expenses.indexWhere((expense) => expense.id == updated.id);
+    if (index == -1) return;
+    expenses[index] = updated;
+    await database.updateExpense(updated);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
+  Future<void> updateUserProfile(AppUser updatedUser) async {
+    user = updatedUser;
+    remoteScores = null;
+    await database.updateUserProfile(updatedUser);
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
     notifyListeners();
@@ -144,6 +164,9 @@ class LifeLensStore extends ChangeNotifier {
           calendarEvents: tasks.length,
           highPriorityTasks: highPriorityTasks,
           totalWorkload: totalWorkload,
+          monthlyBudget: monthlySpendingBudget > 0
+              ? monthlySpendingBudget
+              : null,
         ),
       );
       lastSyncedAt = DateTime.now();
@@ -232,10 +255,27 @@ class LifeLensStore extends ChangeNotifier {
         .fold(0, (total, entry) => total + entry.amount);
   }
 
+  double get monthlySpendingBudget {
+    final explicitBudget = user.monthlyBudget;
+    if (explicitBudget != null && explicitBudget > 0) return explicitBudget;
+    final income = user.monthlyIncome;
+    if (income != null && income > 0) return income * .5;
+    return 0;
+  }
+
+  double get dailySpendingBudget {
+    final budget = monthlySpendingBudget;
+    if (budget <= 0) return 0;
+    final now = DateTime.now();
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    return budget / daysInMonth;
+  }
+
   int get highPriorityTasks =>
       tasks.where((task) => task.priority == TaskPriority.high).length;
 
-  int get totalWorkload => tasks.fold(0, (total, task) => total + task.workload);
+  int get totalWorkload =>
+      tasks.fold(0, (total, task) => total + task.workload);
 
   LifestyleScores calculateScores() {
     if (remoteScores != null) return remoteScores!;
@@ -247,23 +287,25 @@ class LifeLensStore extends ChangeNotifier {
     final activityScore = (health.steps / 8000 * 100).clamp(0, 100);
     final focusScore = (100 - (health.screenTimeHours - 4) * 10).clamp(0, 100);
     final workloadPenalty = (totalWorkload * 4).clamp(0, 40);
-    final spendingPenalty = (todaySpending / 20).clamp(0, 45);
+    final spendingPenalty = _spendingPenalty();
 
-    final productivity = ((sleepScore * .30) +
-            (activityScore * .25) +
-            (focusScore * .30) +
-            (100 - workloadPenalty) * .15)
-        .round()
-        .clamp(0, 100);
+    final productivity =
+        ((sleepScore * .30) +
+                (activityScore * .25) +
+                (focusScore * .30) +
+                (100 - workloadPenalty) * .15)
+            .round()
+            .clamp(0, 100);
 
     final financialHealth = (100 - spendingPenalty).round().clamp(0, 100);
 
-    final stressRisk = ((100 - sleepScore) * .35 +
-            health.screenTimeHours * 5 +
-            highPriorityTasks * 10 +
-            totalWorkload * 2)
-        .round()
-        .clamp(0, 100);
+    final stressRisk =
+        ((100 - sleepScore) * .35 +
+                health.screenTimeHours * 5 +
+                highPriorityTasks * 10 +
+                totalWorkload * 2)
+            .round()
+            .clamp(0, 100);
 
     return LifestyleScores(
       productivity: productivity,
@@ -279,6 +321,13 @@ class LifeLensStore extends ChangeNotifier {
     );
   }
 
+  double _spendingPenalty() {
+    final dailyBudget = dailySpendingBudget;
+    if (dailyBudget <= 0) return (todaySpending / 20).clamp(0, 45);
+    final budgetRatio = todaySpending / dailyBudget;
+    return (budgetRatio * 45).clamp(0, 60);
+  }
+
   List<String> _recommendations({
     required int productivity,
     required int financialHealth,
@@ -292,7 +341,14 @@ class LifeLensStore extends ChangeNotifier {
       items.add('Screen time is high. Reduce late-night phone usage.');
     }
     if (financialHealth < 70) {
-      items.add('Spending is rising today. Avoid non-essential expenses.');
+      final dailyBudget = dailySpendingBudget;
+      if (dailyBudget > 0) {
+        items.add(
+          'Today spending crossed your daily budget pace. Keep non-essential expenses low.',
+        );
+      } else {
+        items.add('Add income or monthly budget to judge spending accurately.');
+      }
     }
     if (stressRisk > 65) {
       items.add('Stress risk is high. Move one low-priority task to tomorrow.');

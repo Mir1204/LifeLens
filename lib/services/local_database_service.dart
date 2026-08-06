@@ -8,7 +8,7 @@ import '../models/lifestyle_scores.dart';
 
 class LocalDatabaseService {
   static const databaseName = 'lifelens.db';
-  static const databaseVersion = 3;
+  static const databaseVersion = 4;
 
   Database? _database;
 
@@ -27,7 +27,11 @@ class LocalDatabaseService {
     return _database!;
   }
 
-  Future<void> _upgradeSchema(Database db, int oldVersion, int newVersion) async {
+  Future<void> _upgradeSchema(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
     if (oldVersion < 2) {
       await _tryExecute(db, 'ALTER TABLE expenses ADD COLUMN updated_at TEXT');
       await _tryExecute(db, 'ALTER TABLE expenses ADD COLUMN deleted_at TEXT');
@@ -83,6 +87,20 @@ class LocalDatabaseService {
         'CREATE INDEX idx_recommendations_user_date ON recommendations(user_id, recommendation_date)',
       );
     }
+    if (oldVersion < 4) {
+      await _tryExecute(
+        db,
+        'ALTER TABLE local_users ADD COLUMN monthly_income REAL',
+      );
+      await _tryExecute(
+        db,
+        'ALTER TABLE local_users ADD COLUMN monthly_budget REAL',
+      );
+      await _tryExecute(
+        db,
+        'ALTER TABLE expenses ADD COLUMN recurring_label TEXT',
+      );
+    }
   }
 
   Future<void> _tryExecute(Database db, String sql) async {
@@ -100,6 +118,8 @@ class LocalDatabaseService {
         name TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
+        monthly_income REAL,
+        monthly_budget REAL,
         signed_in INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
@@ -112,6 +132,7 @@ class LocalDatabaseService {
         amount REAL NOT NULL,
         category TEXT NOT NULL,
         note TEXT NOT NULL,
+        recurring_label TEXT,
         expense_date TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT,
@@ -289,6 +310,8 @@ class LocalDatabaseService {
         'name': user.name,
         'email': user.email,
         'password_hash': passwordHash,
+        'monthly_income': user.monthlyIncome,
+        'monthly_budget': user.monthlyBudget,
         'signed_in': signedIn ? 1 : 0,
         'created_at': DateTime.now().toIso8601String(),
       };
@@ -303,6 +326,8 @@ class LocalDatabaseService {
           {
             'name': user.name,
             'password_hash': passwordHash,
+            'monthly_income': user.monthlyIncome,
+            'monthly_budget': user.monthlyBudget,
             'signed_in': signedIn ? 1 : 0,
           },
           where: 'user_id = ?',
@@ -352,16 +377,48 @@ class LocalDatabaseService {
     await db.update('local_users', {'signed_in': 0});
   }
 
-  Future<void> insertExpense(String userId, ExpenseEntry entry) async {
+  Future<void> updateUserProfile(AppUser user) async {
     final db = await database;
-    await db.insert('expenses', {
+    await db.update(
+      'local_users',
+      {
+        'name': user.name,
+        'monthly_income': user.monthlyIncome,
+        'monthly_budget': user.monthlyBudget,
+      },
+      where: 'user_id = ?',
+      whereArgs: [user.userId],
+    );
+  }
+
+  Future<int> insertExpense(String userId, ExpenseEntry entry) async {
+    final db = await database;
+    return db.insert('expenses', {
       'user_id': userId,
       'amount': entry.amount,
       'category': entry.category,
       'note': entry.note,
+      'recurring_label': entry.recurringLabel,
       'expense_date': _dayKey(entry.date),
       'created_at': DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<void> updateExpense(ExpenseEntry entry) async {
+    if (entry.id == null) return;
+    final db = await database;
+    await db.update(
+      'expenses',
+      {
+        'amount': entry.amount,
+        'category': entry.category,
+        'note': entry.note,
+        'recurring_label': entry.recurringLabel,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [entry.id],
+    );
   }
 
   Future<List<ExpenseEntry>> expenses(String userId) async {
@@ -514,14 +571,11 @@ class LocalDatabaseService {
       orderBy: 'usage_hours DESC',
     );
     final apps = rows.map(_usedAppFromRow).toList();
-    final totalHours = apps.fold<double>(
-      0,
-      (total, app) => total + app.hours,
-    );
+    final totalHours = apps.fold<double>(0, (total, app) => total + app.hours);
     final updatedAt = rows.isEmpty
         ? DateTime.parse(usageDate)
         : DateTime.tryParse(rows.first['created_at'] as String) ??
-            DateTime.parse(usageDate);
+              DateTime.parse(usageDate);
     return AppUsageSummary(
       totalHours: totalHours,
       apps: apps,
@@ -539,23 +593,19 @@ class LocalDatabaseService {
   }) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
-    await db.insert(
-      'daily_entries',
-      {
-        'user_id': userId,
-        'entry_date': _dayKey(DateTime.now()),
-        'sleep_hours': health.sleepHours,
-        'steps': health.steps,
-        'screen_time_hours': health.screenTimeHours,
-        'daily_spending': dailySpending,
-        'calendar_events': calendarEvents,
-        'high_priority_tasks': highPriorityTasks,
-        'total_workload': totalWorkload,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('daily_entries', {
+      'user_id': userId,
+      'entry_date': _dayKey(DateTime.now()),
+      'sleep_hours': health.sleepHours,
+      'steps': health.steps,
+      'screen_time_hours': health.screenTimeHours,
+      'daily_spending': dailySpending,
+      'calendar_events': calendarEvents,
+      'high_priority_tasks': highPriorityTasks,
+      'total_workload': totalWorkload,
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> insertScoreSnapshot({
@@ -567,23 +617,19 @@ class LocalDatabaseService {
   }) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
-    await db.insert(
-      'score_snapshots',
-      {
-        'user_id': userId,
-        'score_date': _dayKey(scores.date),
-        'productivity': scores.productivity,
-        'financial_health': scores.financialHealth,
-        'stress_risk': scores.stressRisk,
-        'burnout_risk': scores.burnoutRisk,
-        'overspending_risk': scores.overspendingRisk,
-        'spending': spending,
-        'sleep_hours': sleepHours,
-        'screen_time_hours': screenTimeHours,
-        'created_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('score_snapshots', {
+      'user_id': userId,
+      'score_date': _dayKey(scores.date),
+      'productivity': scores.productivity,
+      'financial_health': scores.financialHealth,
+      'stress_risk': scores.stressRisk,
+      'burnout_risk': scores.burnoutRisk,
+      'overspending_risk': scores.overspendingRisk,
+      'spending': spending,
+      'sleep_hours': sleepHours,
+      'screen_time_hours': screenTimeHours,
+      'created_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
     await replaceRecommendations(userId, scores);
   }
 
@@ -649,6 +695,8 @@ class LocalDatabaseService {
       userId: row['user_id'] as String,
       name: row['name'] as String,
       email: row['email'] as String,
+      monthlyIncome: (row['monthly_income'] as num?)?.toDouble(),
+      monthlyBudget: (row['monthly_budget'] as num?)?.toDouble(),
     );
   }
 
@@ -659,6 +707,7 @@ class LocalDatabaseService {
       category: row['category'] as String,
       date: DateTime.parse(row['expense_date'] as String),
       note: row['note'] as String,
+      recurringLabel: row['recurring_label'] as String?,
     );
   }
 

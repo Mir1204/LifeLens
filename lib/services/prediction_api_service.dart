@@ -12,6 +12,7 @@ class PredictionPayload {
     required this.calendarEvents,
     required this.highPriorityTasks,
     required this.totalWorkload,
+    this.monthlyBudget,
   });
 
   final String userId;
@@ -20,6 +21,7 @@ class PredictionPayload {
   final int calendarEvents;
   final int highPriorityTasks;
   final int totalWorkload;
+  final double? monthlyBudget;
 
   Map<String, Object> toJson() {
     return {
@@ -31,6 +33,7 @@ class PredictionPayload {
       'calendar_events': calendarEvents,
       'high_priority_tasks': highPriorityTasks,
       'total_workload': totalWorkload,
+      if (monthlyBudget != null) 'monthly_budget': monthlyBudget!,
     };
   }
 }
@@ -45,7 +48,9 @@ class PredictionApiService {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
       final request = await client.getUrl(uri);
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
       return response.statusCode >= 200 && response.statusCode < 300;
     } finally {
       client.close(force: true);
@@ -61,7 +66,9 @@ class PredictionApiService {
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(payload.toJson()));
 
-      final response = await request.close().timeout(const Duration(seconds: 12));
+      final response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
       final body = await response.transform(utf8.decoder).join();
 
       if (response.statusCode < 200 || response.statusCode >= 300) {

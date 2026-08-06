@@ -3,7 +3,7 @@ import 'local_database_service.dart';
 
 class AuthService {
   AuthService({LocalDatabaseService? database})
-      : database = database ?? LocalDatabaseService();
+    : database = database ?? LocalDatabaseService();
 
   final LocalDatabaseService database;
 
@@ -48,6 +48,8 @@ class AuthService {
       userId: row['user_id'] as String,
       name: row['name'] as String,
       email: row['email'] as String,
+      monthlyIncome: (row['monthly_income'] as num?)?.toDouble(),
+      monthlyBudget: (row['monthly_budget'] as num?)?.toDouble(),
     );
     await database.markSignedIn(user.userId);
     return user;

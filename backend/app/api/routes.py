@@ -56,7 +56,10 @@ def predict_daily_score(payload: DailyPayload, db: Session = Depends(get_db)):
         screen_time_hours=payload.screen_time_hours,
         total_workload=payload.total_workload,
     )
-    financial_health = calculate_financial_health(payload.daily_spending)
+    financial_health = calculate_financial_health(
+        payload.daily_spending,
+        payload.monthly_budget,
+    )
 
     # 4. ML predictions (fallback to formula automatically if model not trained yet)
     stress_risk, burnout_label = predict_burnout_risk(features)
@@ -69,6 +72,7 @@ def predict_daily_score(payload: DailyPayload, db: Session = Depends(get_db)):
         financial_health=financial_health,
         stress_risk=stress_risk,
         productivity=productivity,
+        monthly_budget=payload.monthly_budget,
     )
 
     return ScoreResponse(

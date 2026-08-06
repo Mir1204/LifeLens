@@ -5,6 +5,7 @@ class ExpenseEntry {
     required this.category,
     required this.date,
     required this.note,
+    this.recurringLabel,
   });
 
   final int? id;
@@ -12,6 +13,28 @@ class ExpenseEntry {
   final String category;
   final DateTime date;
   final String note;
+  final String? recurringLabel;
+
+  ExpenseEntry copyWith({
+    int? id,
+    double? amount,
+    String? category,
+    DateTime? date,
+    String? note,
+    String? recurringLabel,
+    bool clearRecurringLabel = false,
+  }) {
+    return ExpenseEntry(
+      id: id ?? this.id,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      date: date ?? this.date,
+      note: note ?? this.note,
+      recurringLabel: clearRecurringLabel
+          ? null
+          : recurringLabel ?? this.recurringLabel,
+    );
+  }
 }
 
 class PlannerEntry {

@@ -26,8 +26,12 @@ def calculate_productivity(sleep_hours: float, steps: int, screen_time_hours: fl
     return round(clamp(productivity))
 
 
-def calculate_financial_health(daily_spending: float) -> int:
-    spending_penalty = clamp(daily_spending / 20, 0, 45)
+def calculate_financial_health(daily_spending: float, monthly_budget: float | None = None) -> int:
+    if monthly_budget and monthly_budget > 0:
+        daily_budget = monthly_budget / 30
+        spending_penalty = clamp((daily_spending / max(daily_budget, 1)) * 45, 0, 60)
+    else:
+        spending_penalty = clamp(daily_spending / 20, 0, 45)
     return round(clamp(100 - spending_penalty))
 
 
@@ -39,14 +43,24 @@ def risk_label(value: int) -> str:
     return "Low"
 
 
-def build_recommendations(sleep_hours, screen_time_hours, financial_health, stress_risk, productivity) -> list[str]:
+def build_recommendations(
+    sleep_hours,
+    screen_time_hours,
+    financial_health,
+    stress_risk,
+    productivity,
+    monthly_budget=None,
+) -> list[str]:
     items = []
     if sleep_hours < 7:
         items.append("Sleep is below target. Try a fixed sleep time tonight.")
     if screen_time_hours > 6:
         items.append("Screen time is high. Reduce late-night phone usage.")
     if financial_health < 70:
-        items.append("Spending is rising today. Avoid non-essential expenses.")
+        if monthly_budget and monthly_budget > 0:
+            items.append("Today spending crossed your daily budget pace. Keep non-essential expenses low.")
+        else:
+            items.append("Add income or monthly budget to judge spending accurately.")
     if stress_risk > 65:
         items.append("Stress risk is high. Move one low-priority task to tomorrow.")
     if productivity >= 75 and stress_risk < 55:
