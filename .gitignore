@@ -9,4 +9,13 @@ build/
 .idea/
 *.iml
 android/.gradle/
+android/.kotlin/
 android/local.properties
+backend/.env
+backend/.env.local
+backend/.venv/
+backend/__pycache__/
+backend/app/**/__pycache__/
+backend/app/ml/data/
+backend/app/ml/artifacts/
+backend/lifelens.db

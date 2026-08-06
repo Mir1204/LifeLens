@@ -14,9 +14,9 @@ Even in a student project, this data should be treated carefully.
 
 ## Current Security Status
 
-The current project is an MVP prototype. It does not yet include:
+The current project is an MVP prototype. It includes local demo login, but it does not yet include:
 
-- Authentication
+- Production authentication
 - User authorization
 - Encrypted local database
 - Fine-grained privacy controls
@@ -46,9 +46,9 @@ allow_origins=["*"]
 
 This is acceptable for local development but should be restricted for deployment.
 
-### No Authentication
+### Local Demo Authentication
 
-The backend currently accepts `user_id` directly from the request body. For production, this should come from authenticated user identity.
+The backend currently accepts `user_id` directly from the request body. The Flutter app generates a stable local ID from the signup email. For production, this should come from authenticated user identity.
 
 ## Recommended Security Improvements
 

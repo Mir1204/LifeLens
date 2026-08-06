@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../features/dashboard/dashboard_screen.dart';
+import '../features/auth/auth_gate.dart';
 import 'theme.dart';
 
 class LifeLensApp extends StatelessWidget {
@@ -12,7 +12,7 @@ class LifeLensApp extends StatelessWidget {
       title: 'LifeLens',
       debugShowCheckedModeBanner: false,
       theme: buildLifeLensTheme(),
-      home: const DashboardScreen(),
+      home: const AuthGate(),
     );
   }
 }

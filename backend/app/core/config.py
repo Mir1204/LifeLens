@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     overspend_model_path: str = "app/ml/artifacts/overspend_model.joblib"
 
     class Config:
-        env_file = ".env"
+        env_file = (".env", ".env.local")
 
 
 settings = Settings()

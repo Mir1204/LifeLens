@@ -51,7 +51,7 @@ python -m venv .venv
 pip install fastapi uvicorn sqlalchemy psycopg2-binary pydantic-settings joblib pandas scikit-learn numpy
 ```
 
-The current `backend/requirements.txt` is empty, so dependencies should be added before final submission.
+Backend dependencies are listed in `backend/requirements.txt`.
 
 Run backend:
 
@@ -134,7 +134,6 @@ For submission/demo:
 
 ## Deployment Checklist
 
-- Fill `backend/requirements.txt`
 - Remove committed `.env` file from Git history or rotate credentials
 - Add `.env.example`
 - Configure production `DATABASE_URL`

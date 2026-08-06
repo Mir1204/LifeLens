@@ -1,97 +1,54 @@
 # Known Issues
 
-## 1. Flutter App Not Yet Connected To Backend
+## 1. Backend `.env` Was Previously Tracked
 
-The Flutter app currently uses local in-memory scoring through:
-
-```text
-lib/services/lifelens_store.dart
-```
-
-The backend API placeholder exists:
-
-```text
-lib/services/prediction_api_service.dart
-```
-
-But the actual HTTP POST call is not implemented yet.
-
-## 2. Flutter API Payload Missing Backend Fields
-
-Backend expects:
-
-- `user_id`
-- `total_workload`
-
-Current Flutter payload should be updated to include these before integration.
-
-## 3. Backend Requirements File Is Empty
-
-Current file:
-
-```text
-backend/requirements.txt
-```
-
-It should include at least:
-
-```text
-fastapi
-uvicorn
-sqlalchemy
-psycopg2-binary
-pydantic-settings
-joblib
-pandas
-scikit-learn
-numpy
-```
-
-## 4. Burnout Training Script Is Empty
-
-Current file:
-
-```text
-backend/app/ml/training/train_burnout_model.py
-```
-
-The prediction service references a burnout model artifact, but the training script is not implemented yet.
-
-## 5. `.env` File Was Committed
-
-The backend update includes:
+The backend update previously included:
 
 ```text
 backend/.env
 ```
 
-This should normally not be tracked in Git.
+This file should be removed from Git tracking:
 
-Recommended fix:
+```powershell
+git rm --cached backend/.env
+```
 
-- Add `backend/.env` to `.gitignore`
-- Keep `backend/.env.example`
-- Rotate any real credentials if needed
+Real credentials should stay in ignored `backend/.env.local`.
 
-## 6. Open CORS Policy
+## 2. Package Resolution Required
 
-Backend currently allows all origins.
+After the latest app features, run:
 
-This is okay for development but should be restricted before deployment.
+```powershell
+flutter pub get
+```
 
-## 7. No Authentication
+Required new packages include SQLite, charts, and local notifications.
 
-The backend trusts `user_id` sent in the request body.
+## 3. Local Demo Auth Is Not Production Auth
 
-Future production versions need authentication so users cannot access or overwrite another user's data.
+Signup/login is local-only for demo. It does not provide server-side identity verification.
 
-## 8. PostgreSQL Required By Default
+Future production versions should use Firebase Auth, Supabase Auth, or JWT-based FastAPI auth.
+
+## 4. Burnout Training Script Is Empty
+
+```text
+backend/app/ml/training/train_burnout_model.py
+```
+
+## 5. Open CORS Policy
+
+Backend currently allows all origins. This is okay for development but should be restricted before deployment.
+
+## 6. PostgreSQL Required By Default
 
 The default `DATABASE_URL` expects local PostgreSQL.
 
 This may fail on machines where PostgreSQL is not configured. SQLite can be used for demo by changing the database URL.
 
-## 9. Model Artifacts Not Present
+## 7. Model Artifacts Not Present
 
 Expected paths:
 
@@ -102,11 +59,6 @@ app/ml/artifacts/overspend_model.joblib
 
 If artifacts are missing, backend fallback logic keeps predictions working, but ML model demonstration will be incomplete.
 
-## 10. Manual Inputs Only
+## 8. Health Connect Data Availability
 
-Current app does not yet use:
-
-- Health Connect
-- UsageStatsManager
-
-Sleep, steps, and screen time are entered manually for MVP testing.
+Health Connect may not always return sleep records unless the user has sleep data available from a supported app/device. Manual sleep input remains the fallback.

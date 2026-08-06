@@ -1,38 +1,38 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/app_usage_summary.dart';
+import '../models/app_user.dart';
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
+import 'local_database_service.dart';
+import 'notification_service.dart';
+import 'prediction_api_service.dart';
 
 class LifeLensStore extends ChangeNotifier {
-  final List<ExpenseEntry> expenses = [
-    ExpenseEntry(
-      amount: 180,
-      category: 'Food',
-      date: DateTime.now(),
-      note: 'Lunch',
-    ),
-    ExpenseEntry(
-      amount: 120,
-      category: 'Travel',
-      date: DateTime.now(),
-      note: 'Bus',
-    ),
-  ];
+  LifeLensStore({required this.user}) {
+    load();
+  }
 
-  final List<PlannerEntry> tasks = [
-    PlannerEntry(
-      title: 'Minor project UI',
-      date: DateTime.now(),
-      priority: TaskPriority.high,
-      workload: 4,
-    ),
-    PlannerEntry(
-      title: 'ML API discussion',
-      date: DateTime.now(),
-      priority: TaskPriority.medium,
-      workload: 2,
-    ),
-  ];
+  static const defaultBackendUrl = 'http://172.20.10.2:8000';
+
+  final AppUser user;
+  final LocalDatabaseService database = LocalDatabaseService();
+  final NotificationService notificationService = NotificationService();
+
+  LifestyleScores? remoteScores;
+  AppUsageSummary? appUsage;
+  List<ScoreSnapshot> scoreHistory = [];
+  String backendUrl = defaultBackendUrl;
+  bool isLoading = true;
+  bool isSyncing = false;
+  bool isTestingBackend = false;
+  String? syncError;
+  String? backendStatus;
+  DateTime? lastSyncedAt;
+
+  final List<ExpenseEntry> expenses = [];
+
+  final List<PlannerEntry> tasks = [];
 
   DailyHealthEntry health = DailyHealthEntry(
     sleepHours: 6.5,
@@ -40,23 +40,189 @@ class LifeLensStore extends ChangeNotifier {
     screenTimeHours: 6.8,
   );
 
-  void addExpense(ExpenseEntry entry) {
+  Future<void> load() async {
+    isLoading = true;
+    notifyListeners();
+
+    backendUrl =
+        await database.setting('backend_url') ?? defaultBackendUrl;
+
+    final loadedExpenses = await database.expenses(user.userId);
+    final loadedTasks = await database.tasks(user.userId);
+    final latestHealth = await database.latestHealth(user.userId);
+    final latestAppUsage = await database.latestAppUsage(user.userId);
+    final loadedScores = await database.scoreHistory(user.userId, 7);
+
+    expenses
+      ..clear()
+      ..addAll(loadedExpenses);
+    tasks
+      ..clear()
+      ..addAll(loadedTasks);
+    if (latestHealth != null) health = latestHealth;
+    appUsage = latestAppUsage;
+    scoreHistory = loadedScores;
+
+    isLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> addExpense(ExpenseEntry entry) async {
+    remoteScores = null;
     expenses.insert(0, entry);
+    await database.insertExpense(user.userId, entry);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
     notifyListeners();
   }
 
-  void addTask(PlannerEntry entry) {
+  Future<void> addTask(PlannerEntry entry) async {
+    remoteScores = null;
     tasks.insert(0, entry);
+    await database.insertTask(user.userId, entry);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
     notifyListeners();
   }
 
-  void updateHealth(DailyHealthEntry entry) {
+  Future<void> deleteExpense(ExpenseEntry entry) async {
+    if (entry.id == null) return;
+    expenses.remove(entry);
+    await database.softDeleteExpense(entry.id!);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
+  Future<void> deleteTask(PlannerEntry entry) async {
+    if (entry.id == null) return;
+    tasks.remove(entry);
+    await database.softDeleteTask(entry.id!);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
+  Future<void> toggleTask(PlannerEntry entry) async {
+    if (entry.id == null) return;
+    final index = tasks.indexOf(entry);
+    if (index == -1) return;
+    final updated = entry.copyWith(isCompleted: !entry.isCompleted);
+    tasks[index] = updated;
+    await database.toggleTaskComplete(entry.id!, done: updated.isCompleted);
+    notifyListeners();
+  }
+
+  Future<void> updateHealth(DailyHealthEntry entry) async {
+    remoteScores = null;
     health = entry;
+    await database.insertHealth(user.userId, entry);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    await notificationService.showRiskAlerts(
+      scores: calculateScores(),
+      health: health,
+    );
     notifyListeners();
   }
 
   void refreshScores() {
     notifyListeners();
+  }
+
+  Future<void> syncWithBackend() async {
+    isSyncing = true;
+    syncError = null;
+    notifyListeners();
+
+    try {
+      remoteScores = await PredictionApiService(baseUrl: backendUrl).predict(
+        PredictionPayload(
+          userId: user.userId,
+          health: health,
+          dailySpending: todaySpending,
+          calendarEvents: tasks.length,
+          highPriorityTasks: highPriorityTasks,
+          totalWorkload: totalWorkload,
+        ),
+      );
+      lastSyncedAt = DateTime.now();
+      await _persistScore(remoteScores!);
+      await _persistDailyEntry();
+      await notificationService.showRiskAlerts(
+        scores: remoteScores!,
+        health: health,
+      );
+    } catch (error) {
+      syncError = error.toString();
+    } finally {
+      isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> saveBackendUrl(String value) async {
+    final normalized = value.trim().replaceAll(RegExp(r'/+$'), '');
+    if (normalized.isEmpty) return;
+    backendUrl = normalized;
+    await database.saveSetting('backend_url', backendUrl);
+    backendStatus = null;
+    notifyListeners();
+  }
+
+  Future<void> testBackendConnection() async {
+    isTestingBackend = true;
+    backendStatus = null;
+    notifyListeners();
+
+    try {
+      final ok = await PredictionApiService(baseUrl: backendUrl).healthCheck();
+      backendStatus = ok ? 'Backend is reachable' : 'Backend did not respond';
+    } catch (error) {
+      backendStatus = 'Backend failed: $error';
+    } finally {
+      isTestingBackend = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> saveAppUsage(AppUsageSummary summary) async {
+    appUsage = summary;
+    await database.replaceScreenTimeApps(user.userId, summary);
+    await updateHealth(
+      DailyHealthEntry(
+        sleepHours: health.sleepHours,
+        steps: health.steps,
+        screenTimeHours: summary.totalHours,
+        source: 'usage_stats',
+      ),
+    );
+  }
+
+  Future<void> recordLocalScoreSnapshot() async {
+    await _persistScore(_calculateLocalScores());
+  }
+
+  Future<void> _persistScore(LifestyleScores scores) async {
+    await database.insertScoreSnapshot(
+      userId: user.userId,
+      scores: scores,
+      spending: todaySpending,
+      sleepHours: health.sleepHours,
+      screenTimeHours: health.screenTimeHours,
+    );
+    scoreHistory = await database.scoreHistory(user.userId, 7);
+  }
+
+  Future<void> _persistDailyEntry() async {
+    await database.upsertDailyEntry(
+      userId: user.userId,
+      health: health,
+      dailySpending: todaySpending,
+      calendarEvents: tasks.length,
+      highPriorityTasks: highPriorityTasks,
+      totalWorkload: totalWorkload,
+    );
   }
 
   double get todaySpending {
@@ -72,6 +238,11 @@ class LifeLensStore extends ChangeNotifier {
   int get totalWorkload => tasks.fold(0, (total, task) => total + task.workload);
 
   LifestyleScores calculateScores() {
+    if (remoteScores != null) return remoteScores!;
+    return _calculateLocalScores();
+  }
+
+  LifestyleScores _calculateLocalScores() {
     final sleepScore = (health.sleepHours / 8 * 100).clamp(0, 100);
     final activityScore = (health.steps / 8000 * 100).clamp(0, 100);
     final focusScore = (100 - (health.screenTimeHours - 4) * 10).clamp(0, 100);

@@ -15,6 +15,14 @@
 - Local rule-based score calculation added
 - Recommendation display added
 - Flutter app pushed to GitHub
+- Local demo login/signup added
+- SQLite local persistence added
+- Backend URL settings added
+- Health Connect integration added for steps/sleep
+- UsageStats screen-time integration added
+- Most-used apps display added
+- Trend charts added
+- Local risk notifications added
 
 ### Backend
 
@@ -48,29 +56,19 @@
 
 ### High Priority
 
-- Connect Flutter `PredictionApiService` to FastAPI using HTTP POST.
-- Add `http` or `dio` dependency to Flutter.
-- Add backend response parsing into `LifestyleScores`.
-- Add `user_id` and `total_workload` to Flutter API payload.
-- Fill `backend/requirements.txt`.
+- Polish chart styling and empty states.
+- Polish screen-time app list further if needed.
+- Build final APK.
 - Complete `train_burnout_model.py`.
-- Add `.env` to `.gitignore`.
 - Remove or rotate any real credentials committed in `backend/.env`.
 
 ### Medium Priority
 
-- Add persistent local storage in Flutter using SQLite, Drift, or SharedPreferences.
-- Add charts for weekly trends.
 - Add validation messages on forms.
-- Add backend error/loading states in Flutter.
-- Add notification support for high stress or overspending risk.
 - Add SQLite fallback configuration for quick local backend demo.
 
 ### Later
 
-- Health Connect integration for sleep and steps.
-- UsageStatsManager integration for real screen time.
-- Authentication.
 - Supabase/PostgreSQL hosted database.
 - Render backend deployment.
 - Release APK build.

@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_user.dart';
 import '../../models/lifestyle_scores.dart';
 import '../../services/lifelens_store.dart';
 import '../../widgets/score_card.dart';
+import '../../widgets/trend_chart_card.dart';
 import '../expenses/expenses_screen.dart';
 import '../insights/insights_screen.dart';
 import '../planner/planner_screen.dart';
 import '../profile/profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({
+    super.key,
+    required this.user,
+    required this.onSignOut,
+  });
+
+  final AppUser user;
+  final VoidCallback onSignOut;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final LifeLensStore store = LifeLensStore();
+  late final LifeLensStore store = LifeLensStore(user: widget.user);
   int currentIndex = 0;
 
   @override
@@ -26,7 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ExpensesScreen(store: store),
       PlannerScreen(store: store),
       InsightsScreen(store: store),
-      ProfileScreen(store: store),
+      ProfileScreen(store: store, onSignOut: widget.onSignOut),
     ];
 
     return AnimatedBuilder(
@@ -38,8 +47,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             actions: [
               IconButton(
                 tooltip: 'Refresh scores',
-                onPressed: store.refreshScores,
-                icon: const Icon(Icons.sync),
+                onPressed: store.isSyncing ? null : store.syncWithBackend,
+                icon: store.isSyncing
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync),
               ),
             ],
           ),
@@ -95,6 +109,7 @@ class _HomeDashboard extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (store.isLoading) const LinearProgressIndicator(),
         Text(
           'Today',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -142,9 +157,78 @@ class _HomeDashboard extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _SummaryPanel(store: store, scores: scores),
+        if (store.syncError != null) ...[
+          const SizedBox(height: 12),
+          _SyncStatusCard(
+            icon: Icons.cloud_off,
+            title: 'Backend sync failed',
+            value: 'Using local scores for now',
+            color: Theme.of(context).colorScheme.error,
+          ),
+        ] else if (store.lastSyncedAt != null) ...[
+          const SizedBox(height: 12),
+          _SyncStatusCard(
+            icon: Icons.cloud_done,
+            title: 'Backend synced',
+            value:
+                '${store.lastSyncedAt!.hour.toString().padLeft(2, '0')}:'
+                '${store.lastSyncedAt!.minute.toString().padLeft(2, '0')}',
+            color: const Color(0xFF287D5A),
+          ),
+        ],
+        const SizedBox(height: 16),
+        TrendChartCard(
+          title: 'Productivity Trend',
+          points: [
+            for (final item in store.scoreHistory)
+              TrendPoint(
+                label: item.date.day.toString(),
+                value: item.productivity.toDouble(),
+              ),
+          ],
+          color: const Color(0xFF287D5A),
+        ),
+        const SizedBox(height: 12),
+        TrendChartCard(
+          title: 'Spending Trend',
+          points: [
+            for (final item in store.scoreHistory)
+              TrendPoint(
+                label: item.date.day.toString(),
+                value: item.spending,
+              ),
+          ],
+          color: const Color(0xFFC8553D),
+          suffix: ' Rs',
+        ),
         const SizedBox(height: 16),
         _Recommendations(scores: scores),
       ],
+    );
+  }
+}
+
+class _SyncStatusCard extends StatelessWidget {
+  const _SyncStatusCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(title),
+        subtitle: Text(value),
+      ),
     );
   }
 }

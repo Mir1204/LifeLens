@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import '../../services/lifelens_store.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key, required this.store});
+  const ProfileScreen({
+    super.key,
+    required this.store,
+    required this.onSignOut,
+  });
 
   final LifeLensStore store;
+  final VoidCallback onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +34,11 @@ class ProfileScreen extends StatelessWidget {
                 CircleAvatar(
                   radius: 34,
                   backgroundColor: Theme.of(context).colorScheme.primary,
-                  child: const Text(
-                    'M',
-                    style: TextStyle(
+                  child: Text(
+                    store.user.name.isEmpty
+                        ? 'L'
+                        : store.user.name[0].toUpperCase(),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
@@ -44,13 +51,13 @@ class ProfileScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Mir Patel',
+                        store.user.name,
                         style: Theme.of(context).textTheme.titleLarge
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
-                      const Text('23DCS086'),
-                      const Text('LifeLens mobile app developer'),
+                      Text(store.user.email),
+                      Text(store.user.userId),
                     ],
                   ),
                 ),
@@ -58,6 +65,8 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        _BackendSettings(store: store),
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -106,7 +115,103 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: onSignOut,
+            icon: const Icon(Icons.logout),
+            label: const Text('Sign Out'),
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _BackendSettings extends StatefulWidget {
+  const _BackendSettings({required this.store});
+
+  final LifeLensStore store;
+
+  @override
+  State<_BackendSettings> createState() => _BackendSettingsState();
+}
+
+class _BackendSettingsState extends State<_BackendSettings> {
+  late final TextEditingController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TextEditingController(text: widget.store.backendUrl);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Backend Settings',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Backend URL',
+                prefixIcon: Icon(Icons.dns_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => widget.store.saveBackendUrl(
+                      controller.text,
+                    ),
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: widget.store.isTestingBackend
+                        ? null
+                        : widget.store.testBackendConnection,
+                    icon: widget.store.isTestingBackend
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.wifi_tethering),
+                    label: const Text('Test'),
+                  ),
+                ),
+              ],
+            ),
+            if (widget.store.backendStatus != null) ...[
+              const SizedBox(height: 10),
+              Text(widget.store.backendStatus!),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

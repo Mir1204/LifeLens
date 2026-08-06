@@ -120,12 +120,14 @@ Current Flutter payload file:
 lib/services/prediction_api_service.dart
 ```
 
-Required update:
+Implemented in Flutter:
 
 - Add `user_id`
 - Add `total_workload`
 - Implement HTTP POST call
 - Parse backend response into `LifestyleScores`
+
+The backend URL is configurable from the app Profile screen and persisted locally.
 
 ## API Documentation UI
 

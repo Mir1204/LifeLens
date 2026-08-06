@@ -40,12 +40,15 @@ The Flutter app contains:
 - `features/dashboard`: score cards, daily summary, recommendations
 - `features/expenses`: manual expense entry
 - `features/planner`: manual task/workload entry
-- `features/insights`: manual sleep, steps, and screen-time input
+- `features/insights`: manual health input, Health Connect reading, screen-time usage reading, and trend cards
 - `features/profile`: simple Mir profile/demo screen
-- `services/lifelens_store.dart`: temporary local state and score calculation
-- `services/prediction_api_service.dart`: placeholder for FastAPI integration
+- `services/local_database_service.dart`: SQLite persistence for local source-of-truth data
+- `services/lifelens_store.dart`: app state, local score calculation, backend sync, and trend history
+- `services/prediction_api_service.dart`: FastAPI integration
+- `services/device_data_service.dart`: Health Connect and UsageStats access
+- `services/notification_service.dart`: local lifestyle risk alerts
 
-At this stage, the app calculates scores locally for demo reliability. The backend integration path is prepared but not fully wired into the UI yet.
+The app keeps local score fallback for demo reliability, but can sync with FastAPI and display backend scores when the backend is available.
 
 ## Backend
 
@@ -76,23 +79,23 @@ The backend contains:
 9. Backend returns scores, risk labels, and recommendations.
 10. Flutter displays the response on the dashboard.
 
-## Planned Android Integrations
+## Android Integrations
 
 ### Health Connect
 
-Future use:
+Current use:
 
 - Sleep duration
-- Steps/activity
+- Steps
 
 ### UsageStatsManager
 
-Future use:
+Current use:
 
 - Daily screen time
 - App usage trends
 
-These integrations are planned after the manual-input MVP is stable.
+Manual input remains available as a fallback when permissions or data sources are unavailable.
 
 ## Architecture Decisions
 
