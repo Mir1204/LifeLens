@@ -13,21 +13,25 @@ Flutter Android app and FastAPI backend for the SGP 7 LifeLens project.
 
 ## Flutter Run
 
-For Samsung A15 testing, keep the phone and laptop on the same Wi-Fi/hotspot.
+For Samsung A15 USB testing, forward the backend port once after connecting the
+phone. This lets the app use `http://127.0.0.1:8000` instead of changing the
+backend URL whenever the laptop IP changes.
 
 ```powershell
 cd C:\7thsem\lifelens_mobile
 flutter pub get
+adb reverse tcp:8000 tcp:8000
 flutter run
 ```
 
 The app currently calls the backend at:
 
 ```text
-http://172.20.10.2:8000
+http://127.0.0.1:8000
 ```
 
-Update `lib/services/prediction_api_service.dart` if your laptop IP changes.
+If you are not using USB debugging, set the backend URL from the Profile screen
+to your laptop's Wi-Fi IP, for example `http://172.20.10.3:8000`.
 
 ## Backend Run
 

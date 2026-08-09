@@ -39,7 +39,7 @@ class PredictionPayload {
 }
 
 class PredictionApiService {
-  const PredictionApiService({this.baseUrl = 'http://172.20.10.2:8000'});
+  const PredictionApiService({this.baseUrl = 'http://127.0.0.1:8000'});
 
   final String baseUrl;
 

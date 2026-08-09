@@ -13,7 +13,7 @@ class LifeLensStore extends ChangeNotifier {
     load();
   }
 
-  static const defaultBackendUrl = 'http://172.20.10.2:8000';
+  static const defaultBackendUrl = 'http://127.0.0.1:8000';
 
   AppUser user;
   final LocalDatabaseService database = LocalDatabaseService();
@@ -44,7 +44,11 @@ class LifeLensStore extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    backendUrl = await database.setting('backend_url') ?? defaultBackendUrl;
+    final savedBackendUrl = await database.setting('backend_url');
+    backendUrl = _normalizeBackendUrl(savedBackendUrl);
+    if (savedBackendUrl != backendUrl) {
+      await database.saveSetting('backend_url', backendUrl);
+    }
 
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
@@ -64,6 +68,16 @@ class LifeLensStore extends ChangeNotifier {
 
     isLoading = false;
     notifyListeners();
+  }
+
+  String _normalizeBackendUrl(String? savedUrl) {
+    final url = savedUrl?.trim().replaceAll(RegExp(r'/+$'), '');
+    if (url == null || url.isEmpty) return defaultBackendUrl;
+    if (url == 'http://172.20.10.2:8000' ||
+        url == 'http://172.20.10.3:8000') {
+      return defaultBackendUrl;
+    }
+    return url;
   }
 
   Future<void> addExpense(ExpenseEntry entry) async {
