@@ -29,7 +29,7 @@ def main():
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = LogisticRegression(max_iter=1000, multi_class="multinomial")
+    model = LogisticRegression(max_iter=1000)
     model.fit(X_train, y_train)
     pred = model.predict(X_test)
     acc = accuracy_score(y_test, pred)
