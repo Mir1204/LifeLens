@@ -85,6 +85,13 @@ Accepts one user's daily lifestyle data, stores/updates the daily record, builds
 | `total_workload` | int | No | Sum of task workload values |
 | `entry_date` | date/null | No | Defaults to server date |
 
+### Privacy Note
+
+For the Android app, `user_id` is a pseudonymous backend identifier such as
+`anon_<hash>`. The payload intentionally contains only daily totals and counts.
+It does not include the user's name, email, expense notes, task titles, app
+names, or package names.
+
 ### Response Body
 
 ```json

@@ -75,6 +75,8 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 12),
         _FinanceProfileCard(store: store),
         const SizedBox(height: 12),
+        _PrivacyCard(store: store),
+        const SizedBox(height: 12),
         _BackendSettings(store: store),
         const SizedBox(height: 12),
         Card(
@@ -165,6 +167,55 @@ class ProfileScreen extends StatelessWidget {
         ),
       );
     }
+  }
+}
+
+class _PrivacyCard extends StatelessWidget {
+  const _PrivacyCard({required this.store});
+
+  final LifeLensStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.privacy_tip_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Privacy Controls',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Allow backend prediction sync'),
+              subtitle: const Text(
+                'Only daily totals and optional budget are sent. Names, emails, expense notes, task titles, and app names stay on this phone.',
+              ),
+              value: store.backendSyncConsent,
+              onChanged: store.saveBackendSyncConsent,
+            ),
+            const SizedBox(height: 8),
+            _ProfileRow(label: 'Backend identity', value: store.backendUserId),
+          ],
+        ),
+      ),
+    );
   }
 }
 

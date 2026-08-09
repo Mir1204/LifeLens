@@ -248,3 +248,14 @@ If the backend becomes the full source of truth later, it should evolve toward:
 - `model_prediction_logs`
 
 For the semester MVP, the Flutter SQLite schema stores raw local detail, and backend `daily_entries` stores sync-ready daily summaries.
+
+## Privacy Boundary
+
+The local SQLite database is the detailed source of truth. It can store names,
+emails, expense notes, task titles, app usage package names, and health records
+because it lives on the user's phone.
+
+The backend database should store only prediction summaries. The app sends a
+pseudonymous `anon_<hash>` backend ID and aggregate daily values, not the user's
+name, email, expense notes, task titles, or app names. Backend sync requires
+explicit consent from the Profile screen.

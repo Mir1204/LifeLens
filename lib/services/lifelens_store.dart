@@ -26,6 +26,7 @@ class LifeLensStore extends ChangeNotifier {
   bool isLoading = true;
   bool isSyncing = false;
   bool isTestingBackend = false;
+  bool backendSyncConsent = false;
   String? syncError;
   String? backendStatus;
   DateTime? lastSyncedAt;
@@ -49,6 +50,8 @@ class LifeLensStore extends ChangeNotifier {
     if (savedBackendUrl != backendUrl) {
       await database.saveSetting('backend_url', backendUrl);
     }
+    backendSyncConsent =
+        await database.setting('backend_sync_consent') == 'true';
 
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
@@ -73,8 +76,7 @@ class LifeLensStore extends ChangeNotifier {
   String _normalizeBackendUrl(String? savedUrl) {
     final url = savedUrl?.trim().replaceAll(RegExp(r'/+$'), '');
     if (url == null || url.isEmpty) return defaultBackendUrl;
-    if (url == 'http://172.20.10.2:8000' ||
-        url == 'http://172.20.10.3:8000') {
+    if (url == 'http://172.20.10.2:8000' || url == 'http://172.20.10.3:8000') {
       return defaultBackendUrl;
     }
     return url;
@@ -165,6 +167,13 @@ class LifeLensStore extends ChangeNotifier {
   }
 
   Future<void> syncWithBackend() async {
+    if (!backendSyncConsent) {
+      syncError =
+          'Backend sync needs consent. Enable privacy consent in Profile first.';
+      notifyListeners();
+      return;
+    }
+
     isSyncing = true;
     syncError = null;
     notifyListeners();
@@ -172,7 +181,7 @@ class LifeLensStore extends ChangeNotifier {
     try {
       remoteScores = await PredictionApiService(baseUrl: backendUrl).predict(
         PredictionPayload(
-          userId: user.userId,
+          userId: backendUserId,
           health: health,
           dailySpending: todaySpending,
           calendarEvents: tasks.length,
@@ -206,6 +215,19 @@ class LifeLensStore extends ChangeNotifier {
     backendStatus = null;
     notifyListeners();
   }
+
+  Future<void> saveBackendSyncConsent(bool value) async {
+    backendSyncConsent = value;
+    await database.saveSetting('backend_sync_consent', value.toString());
+    if (!value) {
+      remoteScores = null;
+      lastSyncedAt = null;
+      syncError = null;
+    }
+    notifyListeners();
+  }
+
+  String get backendUserId => 'anon_${_stableHash(user.userId)}';
 
   Future<void> testBackendConnection() async {
     isTestingBackend = true;
@@ -381,5 +403,14 @@ class LifeLensStore extends ChangeNotifier {
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _stableHash(String value) {
+    var hash = 0x811c9dc5;
+    for (final unit in 'lifelens_backend_v1:$value'.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 }
