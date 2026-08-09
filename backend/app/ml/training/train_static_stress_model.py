@@ -21,6 +21,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from app.ml.training.training_utils import balance_classes
+
 DATA_PATH = "app/ml/data/static_stress_data.csv"
 ARTIFACT_PATH = "app/ml/artifacts/static_stress_model.joblib"
 
@@ -52,6 +54,12 @@ def build_rf_pipeline() -> Pipeline:
 def main() -> None:
     df = pd.read_csv(DATA_PATH)
     print(f"Loaded {len(df)} rows from {DATA_PATH}")
+    print("Original class distribution:")
+    print(df[TARGET].value_counts().to_string())
+
+    df = balance_classes(df, TARGET)
+    print("\nBalanced class distribution:")
+    print(df[TARGET].value_counts().to_string())
 
     X = df[FEATURES]
     y = df[TARGET]

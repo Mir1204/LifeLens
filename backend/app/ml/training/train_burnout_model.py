@@ -21,6 +21,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
 from app.ml.wrappers import LabeledXGB
+from app.ml.training.training_utils import balance_classes
 
 DATA_PATH = "app/ml/data/burnout_data.csv"
 ARTIFACT_PATH = "app/ml/artifacts/burnout_model.joblib"
@@ -49,6 +50,12 @@ def build_lr_pipeline() -> Pipeline:
 def main() -> None:
     df = pd.read_csv(DATA_PATH)
     print(f"Loaded {len(df)} rows from {DATA_PATH}")
+    print("Original class distribution:")
+    print(df[TARGET].value_counts().to_string())
+
+    df = balance_classes(df, TARGET)
+    print("\nBalanced class distribution:")
+    print(df[TARGET].value_counts().to_string())
 
     X = df[FEATURES]
     y = df[TARGET]
