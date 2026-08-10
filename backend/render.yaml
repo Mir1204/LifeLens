@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: lifelens-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: DATABASE_URL
+        sync: false
+      - key: BURNOUT_MODEL_PATH
+        value: app/ml/artifacts/burnout_model.joblib
+      - key: OVERSPEND_MODEL_PATH
+        value: app/ml/artifacts/overspend_model.joblib
+      - key: STATIC_STRESS_MODEL_PATH
+        value: app/ml/artifacts/static_stress_model.joblib

@@ -125,11 +125,17 @@ class _InsightsScreenState extends State<InsightsScreen> {
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: Card(
             child: ExpansionTile(
-              title: Text(
+              title: const Text(
                 'Manual Health Entry',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
               ),
-              leading: Icon(Icons.edit_note, color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.edit_note,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               childrenPadding: const EdgeInsets.all(16).copyWith(top: 0),
               children: [
                 TextField(
@@ -620,4 +626,3 @@ class _AlertGroup {
   final Color color;
   final List<String> messages;
 }
-

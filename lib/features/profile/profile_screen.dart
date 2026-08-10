@@ -86,7 +86,7 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 12),
         _BackendSettings(store: store),
         const SizedBox(height: 12),
-        _AppearanceCard(),
+        const _AppearanceCard(),
         const SizedBox(height: 12),
         _DemoDataCard(store: store),
         const SizedBox(height: 12),
