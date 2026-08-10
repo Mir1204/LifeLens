@@ -24,16 +24,33 @@ class _PlannerScreenState extends State<PlannerScreen> {
     super.dispose();
   }
 
+  static const _workloadLabels = [
+    'Light',
+    'Moderate',
+    'Heavy',
+    'Intense',
+    'Extreme',
+  ];
+
+  String get _workloadLabel => _workloadLabels[(workload.round() - 1).clamp(0, 4)];
+
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.store,
+      builder: (context, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Planner',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+          'Tasks',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
 
@@ -51,6 +68,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
                     textInputAction: TextInputAction.done,
                     decoration: const InputDecoration(
                       labelText: 'Task or event',
+                      hintText: 'Example: Study ML chapter',
                       prefixIcon: Icon(Icons.task_alt),
                     ),
                     validator: (value) {
@@ -85,13 +103,38 @@ class _PlannerScreenState extends State<PlannerScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  Text('Workload: ${workload.round()} / 5'),
+                  Row(
+                    children: [
+                      const Text('Workload: '),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF256D85).withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFF256D85).withValues(alpha: .3),
+                          ),
+                        ),
+                        child: Text(
+                          _workloadLabel,
+                          style: const TextStyle(
+                            color: Color(0xFF256D85),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   Slider(
                     value: workload,
                     min: 1,
                     max: 5,
                     divisions: 4,
-                    label: workload.round().toString(),
+                    label: _workloadLabel,
                     onChanged: (value) => setState(() => workload = value),
                   ),
                   const SizedBox(height: 8),
@@ -113,17 +156,16 @@ class _PlannerScreenState extends State<PlannerScreen> {
         // ── Task list ─────────────────────────────────────────────────
         if (widget.store.tasks.isEmpty)
           const _EmptyTasks()
-        else ...[  
+        else ...[
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
               'Tap circle to complete • Swipe left to delete',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: .5),
-                  ),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: .5),
+              ),
             ),
           ),
           for (final task in widget.store.tasks)
@@ -162,8 +204,11 @@ class _PlannerScreenState extends State<PlannerScreen> {
                       width: 28,
                       height: 28,
                       child: task.isCompleted
-                          ? const Icon(Icons.check,
-                              color: Colors.white, size: 16)
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 16,
+                            )
                           : null,
                     ),
                   ),
@@ -174,10 +219,9 @@ class _PlannerScreenState extends State<PlannerScreen> {
                           ? TextDecoration.lineThrough
                           : null,
                       color: task.isCompleted
-                          ? Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: .4)
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: .4)
                           : null,
                     ),
                   ),
@@ -273,10 +317,9 @@ class _EmptyTasks extends StatelessWidget {
             Icon(
               Icons.event_note_outlined,
               size: 48,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: .3),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: .3),
             ),
             const SizedBox(height: 12),
             Text(
@@ -285,8 +328,9 @@ class _EmptyTasks extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Add your first task or event above',
+              'Add tasks to estimate workload and burnout risk.',
               style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
             ),
           ],
         ),

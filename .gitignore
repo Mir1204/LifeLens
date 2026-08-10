@@ -19,3 +19,4 @@ backend/app/**/__pycache__/
 backend/app/ml/data/
 backend/app/ml/artifacts/
 backend/lifelens.db
+backend/*.db

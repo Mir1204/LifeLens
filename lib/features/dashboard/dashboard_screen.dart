@@ -30,20 +30,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      _HomeDashboard(store: store),
-      ExpensesScreen(store: store),
-      PlannerScreen(store: store),
-      InsightsScreen(store: store),
-      ProfileScreen(store: store, onSignOut: widget.onSignOut),
-    ];
-
+    // AnimatedBuilder wraps the ENTIRE scaffold so every child
+    // (including all tab pages) rebuilds whenever store notifies.
     return AnimatedBuilder(
       animation: store,
       builder: (context, _) {
+        final pages = [
+          _HomeDashboard(store: store),
+          ExpensesScreen(store: store),
+          PlannerScreen(store: store),
+          InsightsScreen(store: store),
+          ProfileScreen(store: store, onSignOut: widget.onSignOut),
+        ];
+
+        // ── Greeting ──────────────────────────────────────────────────
+        final hour = DateTime.now().hour;
+        final greeting = hour < 12
+            ? 'Good morning'
+            : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+        final firstName = store.user.name.split(' ').first;
+
         return Scaffold(
           appBar: AppBar(
-            title: const Text('LifeLens'),
+            title: Text('$greeting, $firstName!'),
             actions: [
               IconButton(
                 tooltip: 'Refresh scores',
@@ -65,29 +76,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
             destinations: const [
               NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: 'Dashboard',
+                icon: Icon(Icons.today_outlined),
+                selectedIcon: Icon(Icons.today),
+                label: 'Today',
               ),
               NavigationDestination(
-                icon: Icon(Icons.receipt_long_outlined),
-                selectedIcon: Icon(Icons.receipt_long),
-                label: 'Expenses',
+                icon: Icon(Icons.account_balance_wallet_outlined),
+                selectedIcon: Icon(Icons.account_balance_wallet),
+                label: 'Money',
               ),
               NavigationDestination(
-                icon: Icon(Icons.event_note_outlined),
-                selectedIcon: Icon(Icons.event_note),
-                label: 'Planner',
+                icon: Icon(Icons.checklist_outlined),
+                selectedIcon: Icon(Icons.checklist),
+                label: 'Tasks',
               ),
               NavigationDestination(
-                icon: Icon(Icons.psychology_outlined),
-                selectedIcon: Icon(Icons.psychology),
-                label: 'Insights',
+                icon: Icon(Icons.show_chart_outlined),
+                selectedIcon: Icon(Icons.show_chart),
+                label: 'Trends',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline),
                 selectedIcon: Icon(Icons.person),
-                label: 'Profile',
+                label: 'Me',
               ),
             ],
           ),
@@ -96,6 +107,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
+// ── Home tab ────────────────────────────────────────────────────────────────
 
 class _HomeDashboard extends StatelessWidget {
   const _HomeDashboard({required this.store});
@@ -106,22 +119,13 @@ class _HomeDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scores = store.calculateScores();
     final recommendations = _recommendations(scores);
+    final sync = _syncState();
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         if (store.isLoading) const LinearProgressIndicator(),
-        Text(
-          'Dashboard',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Your routine score and next best action.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        _LifeLensStatusHero(scores: scores, sync: sync, store: store),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -138,19 +142,19 @@ class _HomeDashboard extends StatelessWidget {
                   title: 'Productivity',
                   value: scores.productivity,
                   icon: Icons.trending_up,
-                  color: const Color(0xFF287D5A),
+                  color: _positiveScoreColor(scores.productivity),
                 ),
                 ScoreCard(
                   title: 'Financial Health',
                   value: scores.financialHealth,
                   icon: Icons.account_balance_wallet,
-                  color: const Color(0xFF256D85),
+                  color: _positiveScoreColor(scores.financialHealth),
                 ),
                 ScoreCard(
                   title: 'Stress Risk',
                   value: scores.stressRisk,
                   icon: Icons.bolt,
-                  color: const Color(0xFFC8553D),
+                  color: _riskScoreColor(scores.stressRisk),
                 ),
               ],
             );
@@ -159,28 +163,11 @@ class _HomeDashboard extends StatelessWidget {
         const SizedBox(height: 16),
         _TargetCard(store: store, scores: scores),
         const SizedBox(height: 12),
+        _AiPredictionPanel(store: store, scores: scores),
+        const SizedBox(height: 12),
         _RecommendationCard(items: recommendations),
         const SizedBox(height: 12),
         _SummaryPanel(store: store, scores: scores),
-        if (store.syncError != null) ...[
-          const SizedBox(height: 12),
-          _SyncStatusCard(
-            icon: Icons.cloud_off,
-            title: 'Backend sync failed',
-            value: 'Using local scores for now',
-            color: Theme.of(context).colorScheme.error,
-          ),
-        ] else if (store.lastSyncedAt != null) ...[
-          const SizedBox(height: 12),
-          _SyncStatusCard(
-            icon: Icons.cloud_done,
-            title: 'Backend synced',
-            value:
-                '${store.lastSyncedAt!.hour.toString().padLeft(2, '0')}:'
-                '${store.lastSyncedAt!.minute.toString().padLeft(2, '0')}',
-            color: const Color(0xFF287D5A),
-          ),
-        ],
         const SizedBox(height: 16),
         TrendChartCard(
           title: 'Productivity Trend',
@@ -195,6 +182,35 @@ class _HomeDashboard extends StatelessWidget {
           suffix: ' Rs',
         ),
       ],
+    );
+  }
+
+  _SyncState _syncState() {
+    if (!store.backendSyncConsent) {
+      return const _SyncState(
+        label: 'Consent Required',
+        icon: Icons.lock_outline,
+        color: Color(0xFFB88746),
+      );
+    }
+    if (store.lastSyncedAt != null && store.syncError == null) {
+      return const _SyncState(
+        label: 'Backend Synced',
+        icon: Icons.cloud_done,
+        color: Color(0xFF287D5A),
+      );
+    }
+    if (store.syncError != null) {
+      return const _SyncState(
+        label: 'Local Mode',
+        icon: Icons.cloud_off,
+        color: Color(0xFFC8553D),
+      );
+    }
+    return const _SyncState(
+      label: 'Local Mode',
+      icon: Icons.phone_android,
+      color: Color(0xFF256D85),
     );
   }
 
@@ -241,7 +257,7 @@ class _HomeDashboard extends StatelessWidget {
       );
     } else if (todaySpending > dailyBudget) {
       items.add(
-        'Keep tomorrow essentials-only to recover today’s financial score.',
+        'Keep tomorrow essentials-only to recover your financial score.',
       );
     }
 
@@ -303,6 +319,315 @@ class _HomeDashboard extends StatelessWidget {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 }
+
+// ── Sync state value object ──────────────────────────────────────────────────
+
+class _SyncState {
+  const _SyncState({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+}
+
+// ── Hero status card ─────────────────────────────────────────────────────────
+
+class _LifeLensStatusHero extends StatelessWidget {
+  const _LifeLensStatusHero({
+    required this.scores,
+    required this.sync,
+    required this.store,
+  });
+
+  final LifestyleScores scores;
+  final _SyncState sync;
+  final LifeLensStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final riskText = _riskHeadline(scores);
+    final color = _riskLabelColor(
+      scores.burnoutRisk == 'High'
+          ? 80
+          : scores.burnoutRisk == 'Medium'
+          ? 50
+          : scores.stressRisk,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: .12),
+            color.withValues(alpha: .05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: .22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Today\'s LifeLens Status',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
+                ),
+              ),
+              // Animated chip so it visually transitions when state changes
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                child: _StatusChip(sync: sync, key: ValueKey(sync.label)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            riskText,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${scores.burnoutRisk} burnout risk • ${scores.overspendingRisk} overspending risk',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: .68),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _riskHeadline(LifestyleScores scores) {
+    if (scores.stressRisk >= 70 ||
+        scores.burnoutRisk == 'High' ||
+        scores.overspendingRisk == 'High') {
+      return 'Today needs attention';
+    }
+    if (scores.stressRisk >= 40 ||
+        scores.burnoutRisk == 'Medium' ||
+        scores.overspendingRisk == 'Medium') {
+      return 'Today is mostly steady';
+    }
+    return 'Today looks balanced';
+  }
+}
+
+// ── Sync status chip ─────────────────────────────────────────────────────────
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({super.key, required this.sync});
+
+  final _SyncState sync;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: sync.color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: sync.color.withValues(alpha: .28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(sync.icon, size: 14, color: sync.color),
+          const SizedBox(width: 5),
+          Text(
+            sync.label,
+            style: TextStyle(
+              color: sync.color,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── AI prediction panel ──────────────────────────────────────────────────────
+
+class _AiPredictionPanel extends StatelessWidget {
+  const _AiPredictionPanel({required this.store, required this.scores});
+
+  final LifeLensStore store;
+  final LifestyleScores scores;
+
+  @override
+  Widget build(BuildContext context) {
+    final synced = store.lastSyncedAt != null && store.syncError == null;
+    final source = synced ? 'Backend' : 'Local fallback';
+    final syncedAt = store.lastSyncedAt;
+    final syncTime = syncedAt == null
+        ? 'Not synced'
+        : '${syncedAt.hour.toString().padLeft(2, '0')}:${syncedAt.minute.toString().padLeft(2, '0')}';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.psychology_outlined,
+                  color: synced
+                      ? const Color(0xFF256D85)
+                      : const Color(0xFFB88746),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'AI Prediction Output',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // ── Chip grid layout ─────────────────────────────────────
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _AiChip(
+                  label: 'Source',
+                  value: source,
+                  icon: Icons.cloud_done_outlined,
+                  color: synced
+                      ? const Color(0xFF287D5A)
+                      : const Color(0xFFB88746),
+                ),
+                _AiChip(
+                  label: 'Last sync',
+                  value: syncTime,
+                  icon: Icons.schedule,
+                  color: const Color(0xFF256D85),
+                ),
+                _AiChip(
+                  label: 'Burnout',
+                  value: scores.burnoutRisk,
+                  icon: Icons.local_fire_department_outlined,
+                  color: _riskColor(scores.burnoutRisk),
+                ),
+                _AiChip(
+                  label: 'Overspend',
+                  value: scores.overspendingRisk,
+                  icon: Icons.account_balance_wallet_outlined,
+                  color: _riskColor(scores.overspendingRisk),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _riskColor(String label) => switch (label) {
+    'High' => const Color(0xFFC8553D),
+    'Medium' => const Color(0xFFB88746),
+    _ => const Color(0xFF287D5A),
+  };
+}
+
+class _AiChip extends StatelessWidget {
+  const _AiChip({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: .2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: color.withValues(alpha: .8),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Colour helpers ────────────────────────────────────────────────────────────
+
+Color _positiveScoreColor(int value) {
+  if (value >= 75) return const Color(0xFF287D5A);
+  if (value >= 55) return const Color(0xFF256D85);
+  if (value >= 40) return const Color(0xFFB88746);
+  return const Color(0xFFC8553D);
+}
+
+Color _riskScoreColor(int value) {
+  if (value >= 70) return const Color(0xFFC8553D);
+  if (value >= 40) return const Color(0xFFB88746);
+  return const Color(0xFF287D5A);
+}
+
+Color _riskLabelColor(int value) => _riskScoreColor(value);
+
+// ── Target card ───────────────────────────────────────────────────────────────
 
 class _TargetCard extends StatelessWidget {
   const _TargetCard({required this.store, required this.scores});
@@ -366,7 +691,7 @@ class _TargetCard extends StatelessWidget {
         icon: Icons.savings_outlined,
         title: 'Tomorrow Reset Target',
         body:
-            'Keep tomorrow essentials-only. One calm spending day can recover today’s financial score.',
+            'Keep tomorrow essentials-only. One calm spending day can recover your financial score.',
         progress: .35,
       );
     }
@@ -392,7 +717,7 @@ class _TargetCard extends StatelessWidget {
       icon: Icons.flag_outlined,
       title: 'Consistency Target',
       body:
-          'Repeat today’s routine tomorrow. Consistency keeps productivity high without adding stress.',
+          'Repeat today\'s routine tomorrow. Consistency keeps productivity high without adding stress.',
       progress: scores.productivity / 100,
     );
   }
@@ -411,6 +736,8 @@ class _Target {
   final String body;
   final double progress;
 }
+
+// ── Recommendation card ───────────────────────────────────────────────────────
 
 class _RecommendationCard extends StatelessWidget {
   const _RecommendationCard({required this.items});
@@ -443,13 +770,32 @@ class _RecommendationCard extends StatelessWidget {
             const SizedBox(height: 10),
             for (final item in items)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.check_circle_outline, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(item)),
+                    Text(
+                      _recommendationCategory(item),
+                      style: TextStyle(
+                        color: _recommendationColor(item),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                        letterSpacing: .4,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.check_circle_outline,
+                          size: 18,
+                          color: _recommendationColor(item),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(item)),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -458,32 +804,34 @@ class _RecommendationCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _SyncStatusCard extends StatelessWidget {
-  const _SyncStatusCard({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.color,
-  });
+  String _recommendationCategory(String item) {
+    final lower = item.toLowerCase();
+    if (lower.contains('sleep') || lower.contains('bedtime')) return 'SLEEP';
+    if (lower.contains('spending') ||
+        lower.contains('expense') ||
+        lower.contains('budget')) {
+      return 'FINANCE';
+    }
+    if (lower.contains('screen') || lower.contains('phone')) return 'FOCUS';
+    if (lower.contains('task') || lower.contains('priority')) {
+      return 'WORKLOAD';
+    }
+    return 'ROUTINE';
+  }
 
-  final IconData icon;
-  final String title;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(title),
-        subtitle: Text(value),
-      ),
-    );
+  Color _recommendationColor(String item) {
+    return switch (_recommendationCategory(item)) {
+      'FINANCE' => const Color(0xFF256D85),
+      'SLEEP' => const Color(0xFF287D5A),
+      'FOCUS' => const Color(0xFFB88746),
+      'WORKLOAD' => const Color(0xFFC8553D),
+      _ => const Color(0xFF287D5A),
+    };
   }
 }
+
+// ── Summary / Daily inputs panel ─────────────────────────────────────────────
 
 class _SummaryPanel extends StatelessWidget {
   const _SummaryPanel({required this.store, required this.scores});
@@ -505,61 +853,117 @@ class _SummaryPanel extends StatelessWidget {
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            Text(
+              'Sleep & Activity',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: .45),
+                fontWeight: FontWeight.w700,
+                letterSpacing: .4,
+              ),
+            ),
+            const SizedBox(height: 6),
             _MetricRow(
               icon: Icons.bedtime,
               label: 'Sleep',
               value: '${store.health.sleepHours.toStringAsFixed(1)} hrs',
+              valueColor: store.health.sleepHours < 7
+                  ? const Color(0xFFC8553D)
+                  : const Color(0xFF287D5A),
             ),
             _MetricRow(
               icon: Icons.directions_walk,
               label: 'Steps',
               value: '${store.health.steps}',
+              valueColor: store.health.steps < 5000
+                  ? const Color(0xFFB88746)
+                  : const Color(0xFF287D5A),
             ),
             _MetricRow(
               icon: Icons.phone_android,
               label: 'Screen time',
               value: '${store.health.screenTimeHours.toStringAsFixed(1)} hrs',
+              valueColor: store.health.screenTimeHours > 6
+                  ? const Color(0xFFC8553D)
+                  : const Color(0xFF287D5A),
             ),
+            const SizedBox(height: 10),
+            Text(
+              'Finance',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: .45),
+                fontWeight: FontWeight.w700,
+                letterSpacing: .4,
+              ),
+            ),
+            const SizedBox(height: 6),
             _MetricRow(
               icon: Icons.currency_rupee,
               label: 'Today spending',
-              value: store.todaySpending.toStringAsFixed(0),
+              value: 'Rs ${store.todaySpending.toStringAsFixed(0)}',
             ),
             _MetricRow(
               icon: Icons.account_balance_wallet_outlined,
               label: 'Daily budget pace',
               value: store.dailySpendingBudget <= 0
                   ? 'Not set'
-                  : store.dailySpendingBudget.toStringAsFixed(0),
+                  : 'Rs ${store.dailySpendingBudget.toStringAsFixed(0)}',
             ),
+            const SizedBox(height: 10),
+            Text(
+              'Risk',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: .45),
+                fontWeight: FontWeight.w700,
+                letterSpacing: .4,
+              ),
+            ),
+            const SizedBox(height: 6),
             _MetricRow(
-              icon: Icons.priority_high,
+              icon: Icons.local_fire_department_outlined,
               label: 'Burnout risk',
               value: scores.burnoutRisk,
+              valueColor: _riskColor(scores.burnoutRisk),
             ),
             _MetricRow(
               icon: Icons.warning_amber,
               label: 'Overspending risk',
               value: scores.overspendingRisk,
+              valueColor: _riskColor(scores.overspendingRisk),
             ),
           ],
         ),
       ),
     );
   }
+
+  Color _riskColor(String label) => switch (label) {
+    'High' => const Color(0xFFC8553D),
+    'Medium' => const Color(0xFFB88746),
+    _ => const Color(0xFF287D5A),
+  };
 }
+
+// ── Shared metric row ─────────────────────────────────────────────────────────
 
 class _MetricRow extends StatelessWidget {
   const _MetricRow({
     required this.icon,
     required this.label,
     required this.value,
+    this.valueColor,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -567,10 +971,16 @@ class _MetricRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 10),
           Expanded(child: Text(label)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: valueColor,
+            ),
+          ),
         ],
       ),
     );

@@ -38,6 +38,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.store,
+      builder: (context, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -372,6 +379,7 @@ class _ExpenseForm extends StatelessWidget {
                 ),
                 decoration: const InputDecoration(
                   labelText: 'Amount (Rs)',
+                  hintText: 'Example: 120',
                   prefixIcon: Icon(Icons.currency_rupee),
                 ),
                 validator: _amountValidator,
@@ -762,8 +770,9 @@ class _EmptyExpenses extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Add your first expense above',
+              'Add your first expense to unlock financial insights.',
               style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
             ),
           ],
         ),

@@ -217,7 +217,10 @@ class CategoryPieCard extends StatelessWidget {
                                   Container(
                                     width: 10,
                                     height: 10,
-                                    color: colors[i % colors.length],
+                                    decoration: BoxDecoration(
+                                      color: colors[i % colors.length],
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(child: Text(entries[i].key)),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/lifelens_app.dart';
 import '../../models/app_user.dart';
 import '../../services/lifelens_store.dart';
 
@@ -15,6 +16,13 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: store,
+      builder: (context, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final scores = store.calculateScores();
 
     return ListView(
@@ -59,7 +67,6 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(store.user.email),
-                      Text(store.user.userId),
                     ],
                   ),
                 ),
@@ -78,6 +85,10 @@ class ProfileScreen extends StatelessWidget {
         _PrivacyCard(store: store),
         const SizedBox(height: 12),
         _BackendSettings(store: store),
+        const SizedBox(height: 12),
+        _AppearanceCard(),
+        const SizedBox(height: 12),
+        _DemoDataCard(store: store),
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -170,6 +181,70 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
+class _AppearanceCard extends StatelessWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.palette_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Appearance',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeNotifier,
+              builder: (context, mode, _) {
+                return SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      label: Text('Light'),
+                      icon: Icon(Icons.light_mode_outlined),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      label: Text('System'),
+                      icon: Icon(Icons.brightness_auto),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      label: Text('Dark'),
+                      icon: Icon(Icons.dark_mode_outlined),
+                    ),
+                  ],
+                  selected: {mode},
+                  onSelectionChanged: (value) {
+                    themeNotifier.value = value.first;
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PrivacyCard extends StatelessWidget {
   const _PrivacyCard({required this.store});
 
@@ -192,7 +267,7 @@ class _PrivacyCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Privacy Controls',
+                    'Privacy & Data Control',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -201,6 +276,19 @@ class _PrivacyCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
+            const _PrivacyBullet(
+              icon: Icons.receipt_long_outlined,
+              text: 'Raw expenses stay on phone',
+            ),
+            const _PrivacyBullet(
+              icon: Icons.apps,
+              text: 'App names stay on phone',
+            ),
+            const _PrivacyBullet(
+              icon: Icons.cloud_upload_outlined,
+              text: 'Backend receives only daily totals',
+            ),
+            const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Allow backend prediction sync'),
@@ -216,6 +304,104 @@ class _PrivacyCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _PrivacyBullet extends StatelessWidget {
+  const _PrivacyBullet({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
+}
+
+class _DemoDataCard extends StatelessWidget {
+  const _DemoDataCard({required this.store});
+
+  final LifeLensStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.play_circle_outline,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Demo Data',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Load a clear scenario before your presentation.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _loadDemo(context, highRisk: false),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('Balanced'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _loadDemo(context, highRisk: true),
+                    icon: const Icon(Icons.warning_amber_rounded),
+                    label: const Text('High Risk'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadDemo(BuildContext context, {required bool highRisk}) async {
+    await store.loadDemoData(highRisk: highRisk);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            highRisk ? 'High-risk demo loaded' : 'Balanced demo loaded',
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 }
 

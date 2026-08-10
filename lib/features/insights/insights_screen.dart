@@ -50,23 +50,87 @@ class _InsightsScreenState extends State<InsightsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.store,
+      builder: (context, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final scores = widget.store.calculateScores();
     final currentUsage = appUsage ?? widget.store.appUsage;
+    final avgSleep = widget.store.health.sleepHours;
+    final todaySpend = widget.store.todaySpending;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Health & Screen Time',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Trends & Health',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Avg ${avgSleep.toStringAsFixed(1)} hrs sleep · Rs ${todaySpend.toStringAsFixed(0)}/day',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: .1),
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: 7,
+                  isDense: true,
+                  iconSize: 16,
+                  icon: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 7, child: Text('Last 7 Days')),
+                    DropdownMenuItem(value: 30, child: Text('Last 30 Days')),
+                  ],
+                  onChanged: (val) {},
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+        const SizedBox(height: 16),
+        _LifestyleAlertCard(scores: scores, health: widget.store.health),
+        const SizedBox(height: 16),
+        Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: Card(
+            child: ExpansionTile(
+              title: Text(
+                'Manual Health Entry',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+              leading: Icon(Icons.edit_note, color: Theme.of(context).colorScheme.primary),
+              childrenPadding: const EdgeInsets.all(16).copyWith(top: 0),
               children: [
                 TextField(
                   controller: sleepController,
@@ -155,6 +219,10 @@ class _InsightsScreenState extends State<InsightsScreen> {
           summary: currentUsage,
           fallbackHours: widget.store.health.screenTimeHours,
         ),
+        if (widget.store.scoreHistory.isEmpty && currentUsage == null) ...[
+          const SizedBox(height: 12),
+          const _HealthEmptyState(),
+        ],
         if (currentUsage != null) ...[
           const SizedBox(height: 12),
           _MostUsedApps(summary: currentUsage),
@@ -195,13 +263,15 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 Text(
                   'Backend Ready Payload',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text('sleep_hours: ${widget.store.health.sleepHours}'),
                 Text('steps: ${widget.store.health.steps}'),
-                Text('screen_time_hours: ${widget.store.health.screenTimeHours}'),
+                Text(
+                  'screen_time_hours: ${widget.store.health.screenTimeHours}',
+                ),
                 Text('daily_spending: ${widget.store.todaySpending}'),
                 Text('calendar_events: ${widget.store.tasks.length}'),
                 Text('high_priority_tasks: ${widget.store.highPriorityTasks}'),
@@ -210,8 +280,6 @@ class _InsightsScreenState extends State<InsightsScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        _LifestyleAlertCard(scores: scores, health: widget.store.health),
       ],
     );
   }
@@ -220,7 +288,16 @@ class _InsightsScreenState extends State<InsightsScreen> {
     final sleep = double.tryParse(sleepController.text.trim());
     final steps = int.tryParse(stepsController.text.trim());
     final screenTime = double.tryParse(screenTimeController.text.trim());
-    if (sleep == null || steps == null || screenTime == null) return;
+    if (sleep == null || steps == null || screenTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter valid sleep, steps, and screen-time values.'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
 
     await widget.store.updateHealth(
       DailyHealthEntry(
@@ -230,6 +307,15 @@ class _InsightsScreenState extends State<InsightsScreen> {
       ),
     );
     FocusScope.of(context).unfocus();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Health inputs updated'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _readHealthConnect() async {
@@ -274,6 +360,41 @@ class _InsightsScreenState extends State<InsightsScreen> {
   }
 }
 
+class _HealthEmptyState extends StatelessWidget {
+  const _HealthEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+        child: Column(
+          children: [
+            Icon(
+              Icons.health_and_safety_outlined,
+              size: 44,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: .32),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'No health history yet',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Enter sleep and steps manually or connect Health Connect.',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ScreenTimeHero extends StatelessWidget {
   const _ScreenTimeHero({required this.summary, required this.fallbackHours});
 
@@ -303,8 +424,8 @@ class _ScreenTimeHero extends StatelessWidget {
                   Text(
                     '${hours.toStringAsFixed(1)} hours',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   Text(
                     updated == null
@@ -336,9 +457,9 @@ class _MostUsedApps extends StatelessWidget {
           children: [
             Text(
               'Most Used Apps',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             for (final app in summary.apps)
@@ -360,10 +481,7 @@ class _MostUsedApps extends StatelessWidget {
 // ── Color-coded lifestyle alert card ──────────────────────────────────────────
 
 class _LifestyleAlertCard extends StatelessWidget {
-  const _LifestyleAlertCard({
-    required this.scores,
-    required this.health,
-  });
+  const _LifestyleAlertCard({required this.scores, required this.health});
 
   final LifestyleScores scores;
   final DailyHealthEntry health;
@@ -406,9 +524,9 @@ class _LifestyleAlertCard extends StatelessWidget {
               Text(
                 isAllClear ? 'All Clear' : 'Lifestyle Alerts',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: iconColor,
-                    ),
+                  fontWeight: FontWeight.w800,
+                  color: iconColor,
+                ),
               ),
             ],
           ),
@@ -420,14 +538,38 @@ class _LifestyleAlertCard extends StatelessWidget {
             ),
           ] else ...[
             const SizedBox(height: 8),
-            for (final alert in alerts)
+            for (final group in alerts)
               Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('• ', style: TextStyle(fontWeight: FontWeight.w800)),
-                    Expanded(child: Text(alert, style: Theme.of(context).textTheme.bodySmall)),
+                    Row(
+                      children: [
+                        Icon(group.icon, size: 14, color: group.color),
+                        const SizedBox(width: 6),
+                        Text(
+                          group.title.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                            color: group.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    for (final msg in group.messages)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20, bottom: 4),
+                        child: Text(
+                          msg,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -437,20 +579,45 @@ class _LifestyleAlertCard extends StatelessWidget {
     );
   }
 
-  List<String> _buildAlerts() {
-    final alerts = <String>[];
+  List<_AlertGroup> _buildAlerts() {
+    final alerts = <_AlertGroup>[];
+    
+    final stressAlerts = <String>[];
     if (scores.stressRisk >= 70) {
-      alerts.add('High stress risk (${scores.stressRisk}/100) — consider reducing your task load.');
-    }
-    if (scores.financialHealth <= 60) {
-      alerts.add('Financial health is low — review today\'s spending.');
+      stressAlerts.add('High stress risk (${scores.stressRisk}/100) — reduce task load');
     }
     if (health.screenTimeHours >= 7) {
-      alerts.add('Screen time is ${health.screenTimeHours.toStringAsFixed(1)}h — try a digital break.');
+      stressAlerts.add('Screen time is ${health.screenTimeHours.toStringAsFixed(1)}h — try a break');
     }
+    if (stressAlerts.isNotEmpty) {
+      alerts.add(_AlertGroup(title: 'Workload & Focus', icon: Icons.bolt, color: const Color(0xFFC8553D), messages: stressAlerts));
+    }
+
+    final sleepAlerts = <String>[];
     if (health.sleepHours < 6) {
-      alerts.add('Sleep is below 6 hours — plan an earlier bedtime tonight.');
+      sleepAlerts.add('Sleep is below 6 hours — plan an earlier bedtime');
     }
+    if (sleepAlerts.isNotEmpty) {
+      alerts.add(_AlertGroup(title: 'Sleep', icon: Icons.bedtime, color: const Color(0xFF287D5A), messages: sleepAlerts));
+    }
+
+    final financeAlerts = <String>[];
+    if (scores.financialHealth <= 60) {
+      financeAlerts.add('Financial health is low — review today\'s spending');
+    }
+    if (financeAlerts.isNotEmpty) {
+      alerts.add(_AlertGroup(title: 'Finance', icon: Icons.account_balance_wallet, color: const Color(0xFFB88746), messages: financeAlerts));
+    }
+
     return alerts;
   }
 }
+
+class _AlertGroup {
+  const _AlertGroup({required this.title, required this.icon, required this.color, required this.messages});
+  final String title;
+  final IconData icon;
+  final Color color;
+  final List<String> messages;
+}
+

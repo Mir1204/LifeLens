@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 class ScoreCard extends StatelessWidget {
@@ -19,7 +20,7 @@ class ScoreCard extends StatelessWidget {
     final isRisk = title.toLowerCase().contains('risk');
     final status = isRisk
         ? value >= 70
-              ? 'High attention'
+              ? 'High'
               : value >= 40
               ? 'Watch'
               : 'Calm'
@@ -31,34 +32,48 @@ class ScoreCard extends StatelessWidget {
     final progress = (value / 100).clamp(0.0, 1.0);
 
     return Card(
-      elevation: 0,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: .16)),
-          color: color.withValues(alpha: .06),
-        ),
+      child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: .14),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color),
+                  child: Icon(icon, color: color, size: 20),
                 ),
                 const Spacer(),
-                Text(
-                  '$value%',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: color,
+                // ── Circular arc score ─────────────────────────────────
+                SizedBox(
+                  width: 62,
+                  height: 62,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: progress),
+                    duration: const Duration(milliseconds: 1200),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, currentProgress, child) {
+                      final currentValue = (currentProgress * 100).round();
+                      return CustomPaint(
+                        painter: _ArcPainter(progress: currentProgress, color: color),
+                        child: Center(
+                          child: Text(
+                            '$currentValue',
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -70,24 +85,20 @@ class ScoreCard extends StatelessWidget {
                 context,
               ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 4),
-            Text(
-              status,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: .58),
-                fontWeight: FontWeight.w700,
+            const SizedBox(height: 3),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(20),
               ),
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 9,
-                backgroundColor: color.withValues(alpha: .14),
-                valueColor: AlwaysStoppedAnimation(color),
+              child: Text(
+                status,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                ),
               ),
             ),
           ],
@@ -95,4 +106,51 @@ class ScoreCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ArcPainter extends CustomPainter {
+  const _ArcPainter({required this.progress, required this.color});
+
+  final double progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide / 2) - 4;
+    const startAngle = -math.pi * 0.75; // start at 225°
+    const sweepFull = math.pi * 1.5; // 270° sweep
+
+    // Background track
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepFull,
+      false,
+      Paint()
+        ..color = color.withValues(alpha: .15)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Filled value arc
+    if (progress > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepFull * progress,
+        false,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 8
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ArcPainter old) =>
+      old.progress != progress || old.color != color;
 }

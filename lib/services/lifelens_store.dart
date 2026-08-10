@@ -258,6 +258,69 @@ class LifeLensStore extends ChangeNotifier {
     );
   }
 
+  Future<void> loadDemoData({required bool highRisk}) async {
+    remoteScores = null;
+    final now = DateTime.now();
+
+    health = DailyHealthEntry(
+      sleepHours: highRisk ? 4.8 : 7.6,
+      steps: highRisk ? 1800 : 9200,
+      screenTimeHours: highRisk ? 8.4 : 3.2,
+      source: 'demo',
+    );
+    await database.insertHealth(user.userId, health);
+
+    if (highRisk) {
+      await addExpense(
+        ExpenseEntry(
+          amount: 950,
+          category: 'Shopping',
+          date: now,
+          note: 'Demo spike',
+          recurringLabel: null,
+        ),
+      );
+      await addTask(
+        PlannerEntry(
+          title: 'Finish urgent project review',
+          date: now,
+          priority: TaskPriority.high,
+          workload: 5,
+        ),
+      );
+      await addTask(
+        PlannerEntry(
+          title: 'Prepare presentation changes',
+          date: now,
+          priority: TaskPriority.high,
+          workload: 4,
+        ),
+      );
+    } else {
+      await addExpense(
+        ExpenseEntry(
+          amount: 120,
+          category: 'Food',
+          date: now,
+          note: 'Demo balanced day',
+          recurringLabel: 'Snacks',
+        ),
+      );
+      await addTask(
+        PlannerEntry(
+          title: 'Review notes calmly',
+          date: now,
+          priority: TaskPriority.medium,
+          workload: 2,
+        ),
+      );
+    }
+
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
   Future<void> recordLocalScoreSnapshot() async {
     await _persistScore(_calculateLocalScores());
   }
