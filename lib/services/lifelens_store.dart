@@ -13,7 +13,7 @@ class LifeLensStore extends ChangeNotifier {
     load();
   }
 
-  static const defaultBackendUrl = 'http://127.0.0.1:8000';
+  static const defaultBackendUrl = 'https://lifelens-backend-xh56.onrender.com';
 
   AppUser user;
   final LocalDatabaseService database = LocalDatabaseService();
