@@ -56,6 +56,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           appBar: AppBar(
             title: Text('$greeting, $firstName!'),
             actions: [
+              _ConnectivityBadge(isOnline: store.isOnline),
+              const SizedBox(width: 4),
               IconButton(
                 tooltip: 'Refresh scores',
                 onPressed: store.isSyncing ? null : store.syncWithBackend,
@@ -68,7 +70,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          body: SafeArea(child: pages[currentIndex]),
+          body: SafeArea(
+            child: Column(
+              children: [
+                _OfflineBanner(isOnline: store.isOnline),
+                Expanded(child: pages[currentIndex]),
+              ],
+            ),
+          ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: currentIndex,
             onDestinationSelected: (index) {
@@ -986,3 +995,155 @@ class _MetricRow extends StatelessWidget {
     );
   }
 }
+
+
+// ── Connectivity Badge ────────────────────────────────────────────────────────
+
+class _ConnectivityBadge extends StatelessWidget {
+  const _ConnectivityBadge({required this.isOnline});
+
+  final bool isOnline;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isOnline ? const Color(0xFF287D5A) : const Color(0xFFC8553D);
+    final label = isOnline ? 'Online' : 'Offline';
+    final icon = isOnline ? Icons.wifi : Icons.wifi_off;
+
+    return Tooltip(
+      message: isOnline
+          ? 'Connected – syncing with backend'
+          : 'Working offline – data will sync when connection returns',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: .4), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Offline Banner ────────────────────────────────────────────────────────────
+
+class _OfflineBanner extends StatefulWidget {
+  const _OfflineBanner({required this.isOnline});
+
+  final bool isOnline;
+
+  @override
+  State<_OfflineBanner> createState() => _OfflineBannerState();
+}
+
+class _OfflineBannerState extends State<_OfflineBanner>
+    with SingleTickerProviderStateMixin {
+  bool _dismissed = false;
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+    if (!widget.isOnline) _ctrl.forward();
+  }
+
+  @override
+  void didUpdateWidget(_OfflineBanner old) {
+    super.didUpdateWidget(old);
+    if (widget.isOnline != old.isOnline) {
+      if (widget.isOnline) {
+        _ctrl.reverse();
+        _dismissed = false;
+      } else {
+        _dismissed = false;
+        _ctrl.forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+
+    return FadeTransition(
+      opacity: _fade,
+      child: SizeTransition(
+        sizeFactor: _fade,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+          decoration: BoxDecoration(
+            color: const Color(0xFFC8553D).withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFFC8553D).withValues(alpha: .35),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.wifi_off_rounded,
+                  color: Color(0xFFC8553D),
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Working offline — data will sync when connection returns',
+                    style: TextStyle(
+                      color: Color(0xFFC8553D),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _dismissed = true),
+                  child: const Icon(
+                    Icons.close,
+                    color: Color(0xFFC8553D),
+                    size: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

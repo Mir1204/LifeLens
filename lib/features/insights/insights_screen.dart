@@ -62,7 +62,11 @@ class _InsightsScreenState extends State<InsightsScreen> {
     final avgSleep = widget.store.health.sleepHours;
     final todaySpend = widget.store.todaySpending;
 
-    return ListView(
+    return Column(
+      children: [
+        _InsightsOfflineBanner(isOnline: widget.store.isOnline),
+        Expanded(
+          child: ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Row(
@@ -286,6 +290,10 @@ class _InsightsScreenState extends State<InsightsScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 24),
+      ],
+    ),
+        ),
       ],
     );
   }
@@ -455,32 +463,107 @@ class _MostUsedApps extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Most Used Apps',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            for (final app in summary.apps)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: const Icon(Icons.apps),
-                title: Text(app.name),
-                subtitle: Text(app.packageName),
-                trailing: Text('${app.hours.toStringAsFixed(1)}h'),
-              ),
-          ],
-        ),
-      ),
+    final maxHours = summary.apps.fold<double>(
+      0.01,
+      (m, app) => app.hours > m ? app.hours : m,
     );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          child: Text(
+            'Most Used Apps',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: summary.apps.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final app = summary.apps[i];
+              final ratio = (app.hours / maxHours).clamp(0.0, 1.0);
+              final barColor = _appColor(i);
+
+              return Container(
+                width: 100,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      barColor.withValues(alpha: .18),
+                      barColor.withValues(alpha: .07),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: barColor.withValues(alpha: .28),
+                    width: 1,
+                  ),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.apps_rounded, color: barColor, size: 22),
+                    const Spacer(),
+                    Text(
+                      app.name.length > 12
+                          ? '${app.name.substring(0, 11)}…'
+                          : app.name,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${app.hours.toStringAsFixed(1)}h',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: barColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 4,
+                        backgroundColor: barColor.withValues(alpha: .18),
+                        valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _appColor(int i) {
+    const palette = [
+      Color(0xFF256D85),
+      Color(0xFF287D5A),
+      Color(0xFFB88746),
+      Color(0xFFC8553D),
+      Color(0xFF7B5EA7),
+    ];
+    return palette[i % palette.length];
   }
 }
 
@@ -626,3 +709,106 @@ class _AlertGroup {
   final Color color;
   final List<String> messages;
 }
+
+// ── Offline Banner for Insights ───────────────────────────────────────────────
+
+class _InsightsOfflineBanner extends StatefulWidget {
+  const _InsightsOfflineBanner({required this.isOnline});
+
+  final bool isOnline;
+
+  @override
+  State<_InsightsOfflineBanner> createState() => _InsightsOfflineBannerState();
+}
+
+class _InsightsOfflineBannerState extends State<_InsightsOfflineBanner>
+    with SingleTickerProviderStateMixin {
+  bool _dismissed = false;
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+    if (!widget.isOnline) _ctrl.forward();
+  }
+
+  @override
+  void didUpdateWidget(_InsightsOfflineBanner old) {
+    super.didUpdateWidget(old);
+    if (widget.isOnline != old.isOnline) {
+      if (widget.isOnline) {
+        _ctrl.reverse();
+        _dismissed = false;
+      } else {
+        _dismissed = false;
+        _ctrl.forward();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+
+    return FadeTransition(
+      opacity: _fade,
+      child: SizeTransition(
+        sizeFactor: _fade,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+          decoration: BoxDecoration(
+            color: const Color(0xFFC8553D).withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFFC8553D).withValues(alpha: .35),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.wifi_off_rounded,
+                  color: Color(0xFFC8553D),
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Working offline — health sync will resume when connected',
+                    style: TextStyle(
+                      color: Color(0xFFC8553D),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _dismissed = true),
+                  child: const Icon(
+                    Icons.close,
+                    color: Color(0xFFC8553D),
+                    size: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

@@ -39,17 +39,19 @@ class PredictionPayload {
 }
 
 class PredictionApiService {
-  const PredictionApiService({this.baseUrl = 'http://127.0.0.1:8000'});
+  const PredictionApiService({
+    this.baseUrl = 'https://lifelens-backend-xh56.onrender.com',
+  });
 
   final String baseUrl;
 
   Future<bool> healthCheck() async {
     final uri = Uri.parse('$baseUrl/health');
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
     try {
       final request = await client.getUrl(uri);
       final response = await request.close().timeout(
-        const Duration(seconds: 8),
+        const Duration(seconds: 45),
       );
       return response.statusCode >= 200 && response.statusCode < 300;
     } finally {
@@ -59,7 +61,7 @@ class PredictionApiService {
 
   Future<LifestyleScores> predict(PredictionPayload payload) async {
     final uri = Uri.parse('$baseUrl/predict/daily-score');
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 60);
 
     try {
       final request = await client.postUrl(uri);
@@ -67,7 +69,7 @@ class PredictionApiService {
       request.write(jsonEncode(payload.toJson()));
 
       final response = await request.close().timeout(
-        const Duration(seconds: 12),
+        const Duration(seconds: 90),
       );
       final body = await response.transform(utf8.decoder).join();
 

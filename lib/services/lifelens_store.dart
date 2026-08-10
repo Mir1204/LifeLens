@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/app_usage_summary.dart';
 import '../models/app_user.dart';
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
+import 'device_data_service.dart';
 import 'local_database_service.dart';
 import 'notification_service.dart';
 import 'prediction_api_service.dart';
@@ -25,11 +29,14 @@ class LifeLensStore extends ChangeNotifier {
   String backendUrl = defaultBackendUrl;
   bool isLoading = true;
   bool isSyncing = false;
+  bool isOnline = true;
+  bool backendSyncConsent = true;
   bool isTestingBackend = false;
-  bool backendSyncConsent = false;
   String? syncError;
   String? backendStatus;
   DateTime? lastSyncedAt;
+  Timer? _connectivityTimer;
+  final DeviceDataService _deviceDataService = DeviceDataService();
 
   final List<ExpenseEntry> expenses = [];
 
@@ -50,8 +57,10 @@ class LifeLensStore extends ChangeNotifier {
     if (savedBackendUrl != backendUrl) {
       await database.saveSetting('backend_url', backendUrl);
     }
-    backendSyncConsent =
-        await database.setting('backend_sync_consent') == 'true';
+
+
+    final savedConsent = await database.setting('backend_sync_consent');
+    backendSyncConsent = savedConsent != 'false';
 
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
@@ -71,12 +80,62 @@ class LifeLensStore extends ChangeNotifier {
 
     isLoading = false;
     notifyListeners();
+    
+    _autoFetchHealthData();
+    _startConnectivityLoop();
+  }
+
+  @override
+  void dispose() {
+    _connectivityTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _autoFetchHealthData() async {
+    try {
+      final newHealth = await _deviceDataService.readHealthConnect(fallback: health);
+      health = newHealth;
+      await database.insertHealth(user.userId, newHealth);
+
+      final newUsage = await _deviceDataService.readAppUsage();
+      appUsage = newUsage;
+      await database.replaceScreenTimeApps(user.userId, newUsage);
+      notifyListeners();
+      syncWithBackend();
+    } catch (e) {
+      debugPrint('Auto-fetch failed: $e');
+    }
+  }
+
+  void _startConnectivityLoop() {
+    _connectivityTimer?.cancel();
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+      if (isSyncing) return;
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        final nowOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+        final wasOffline = !isOnline;
+        isOnline = nowOnline;
+        if (nowOnline && (wasOffline || lastSyncedAt == null)) {
+          syncWithBackend();
+        }
+        notifyListeners();
+      } on SocketException catch (_) {
+        if (isOnline) {
+          isOnline = false;
+          notifyListeners();
+        }
+      }
+    });
   }
 
   String _normalizeBackendUrl(String? savedUrl) {
     final url = savedUrl?.trim().replaceAll(RegExp(r'/+$'), '');
     if (url == null || url.isEmpty) return defaultBackendUrl;
-    if (url == 'http://172.20.10.2:8000' || url == 'http://172.20.10.3:8000') {
+    if (url == 'http://172.20.10.2:8000' || 
+        url == 'http://172.20.10.3:8000' || 
+        url == 'http://127.0.0.1:8000' || 
+        url == 'http://localhost:8000') {
       return defaultBackendUrl;
     }
     return url;
@@ -146,6 +205,16 @@ class LifeLensStore extends ChangeNotifier {
     final updated = entry.copyWith(isCompleted: !entry.isCompleted);
     tasks[index] = updated;
     await database.toggleTaskComplete(entry.id!, done: updated.isCompleted);
+    // Auto-delete completed task after a delay (15 seconds)
+    if (updated.isCompleted) {
+      Timer(const Duration(seconds: 15), () async {
+        // Verify task still exists and is completed before deleting
+        final matches = tasks.where((t) => t.id == updated.id && t.isCompleted);
+        if (matches.isNotEmpty) {
+          await deleteTask(matches.first);
+        }
+      });
+    }
     notifyListeners();
   }
 
@@ -167,19 +236,17 @@ class LifeLensStore extends ChangeNotifier {
   }
 
   Future<void> syncWithBackend() async {
-    if (!backendSyncConsent) {
-      syncError =
-          'Backend sync needs consent. Enable privacy consent in Profile first.';
-      notifyListeners();
-      return;
-    }
-
+    if (isSyncing) return;
+    
     isSyncing = true;
     syncError = null;
     notifyListeners();
 
     try {
-      remoteScores = await PredictionApiService(baseUrl: backendUrl).predict(
+      final api = PredictionApiService(baseUrl: backendUrl);
+      final isUp = await api.healthCheck();
+      if (!isUp) throw Exception('Backend is down');
+      remoteScores = await api.predict(
         PredictionPayload(
           userId: backendUserId,
           health: health,
@@ -216,18 +283,15 @@ class LifeLensStore extends ChangeNotifier {
     notifyListeners();
   }
 
+
+
+  String get backendUserId => 'anon_${_stableHash(user.userId)}';
+
   Future<void> saveBackendSyncConsent(bool value) async {
     backendSyncConsent = value;
     await database.saveSetting('backend_sync_consent', value.toString());
-    if (!value) {
-      remoteScores = null;
-      lastSyncedAt = null;
-      syncError = null;
-    }
     notifyListeners();
   }
-
-  String get backendUserId => 'anon_${_stableHash(user.userId)}';
 
   Future<void> testBackendConnection() async {
     isTestingBackend = true;

@@ -84,8 +84,6 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 12),
         _PrivacyCard(store: store),
         const SizedBox(height: 12),
-        _BackendSettings(store: store),
-        const SizedBox(height: 12),
         const _AppearanceCard(),
         const SizedBox(height: 12),
         _DemoDataCard(store: store),
@@ -610,91 +608,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   }
 }
 
-class _BackendSettings extends StatefulWidget {
-  const _BackendSettings({required this.store});
 
-  final LifeLensStore store;
-
-  @override
-  State<_BackendSettings> createState() => _BackendSettingsState();
-}
-
-class _BackendSettingsState extends State<_BackendSettings> {
-  late final TextEditingController controller;
-
-  @override
-  void initState() {
-    super.initState();
-    controller = TextEditingController(text: widget.store.backendUrl);
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Backend Settings',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Backend URL',
-                prefixIcon: Icon(Icons.dns_outlined),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () =>
-                        widget.store.saveBackendUrl(controller.text),
-                    icon: const Icon(Icons.save),
-                    label: const Text('Save'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: widget.store.isTestingBackend
-                        ? null
-                        : widget.store.testBackendConnection,
-                    icon: widget.store.isTestingBackend
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.wifi_tethering),
-                    label: const Text('Test'),
-                  ),
-                ),
-              ],
-            ),
-            if (widget.store.backendStatus != null) ...[
-              const SizedBox(height: 10),
-              Text(widget.store.backendStatus!),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ProfileRow extends StatelessWidget {
   const _ProfileRow({required this.label, required this.value});
