@@ -1,0 +1,1 @@
+ALTER TABLE public.daily_entries ENABLE ROW LEVEL SECURITY;
