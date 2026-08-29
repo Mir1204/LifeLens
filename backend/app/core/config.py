@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
     allowed_origins: str = ""
     google_web_client_id: str
     burnout_model_path: str = "app/ml/artifacts/burnout_model.joblib"

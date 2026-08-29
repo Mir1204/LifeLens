@@ -28,7 +28,7 @@ class AuthService {
     required String password,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
-    final token = await _authenticate(
+    final tokens = await _authenticate(
       '/auth/register',
       normalizedEmail,
       password,
@@ -39,7 +39,7 @@ class AuthService {
       email: normalizedEmail,
     );
     await database.upsertUser(user: user, passwordHash: '', signedIn: true);
-    await secureStorage.saveToken(token);
+    await _saveTokens(tokens);
     return user;
   }
 
@@ -48,7 +48,11 @@ class AuthService {
     required String password,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
-    final token = await _authenticate('/auth/login', normalizedEmail, password);
+    final tokens = await _authenticate(
+      '/auth/login',
+      normalizedEmail,
+      password,
+    );
     final row = await database.userByEmail(normalizedEmail);
     final user = AppUser(
       userId: row?['user_id'] as String? ?? _stableUserId(normalizedEmail),
@@ -58,7 +62,7 @@ class AuthService {
       monthlyBudget: (row?['monthly_budget'] as num?)?.toDouble(),
     );
     await database.upsertUser(user: user, passwordHash: '', signedIn: true);
-    await secureStorage.saveToken(token);
+    await _saveTokens(tokens);
     return user;
   }
 
@@ -94,7 +98,7 @@ class AuthService {
         'Google did not return a secure sign-in token.',
       );
 
-    final token = await _authenticateGoogle(idToken);
+    final tokens = await _authenticateGoogle(idToken);
     final row = await database.userByEmail(account.email.toLowerCase());
     final user = AppUser(
       userId: row?['user_id'] as String? ?? _stableUserId(account.email),
@@ -107,11 +111,11 @@ class AuthService {
       monthlyBudget: (row?['monthly_budget'] as num?)?.toDouble(),
     );
     await database.upsertUser(user: user, passwordHash: '', signedIn: true);
-    await secureStorage.saveToken(token);
+    await _saveTokens(tokens);
     return user;
   }
 
-  Future<String> _authenticateGoogle(String idToken) async {
+  Future<_AuthTokens> _authenticateGoogle(String idToken) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 30);
     try {
@@ -135,15 +139,11 @@ class AuthService {
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw const AuthException('LifeLens could not complete Google Sign-In.');
-      }
-      final token =
-          (jsonDecode(body) as Map<String, dynamic>)['access_token'] as String?;
-      if (token == null || token.isEmpty)
         throw const AuthException(
-          'Server returned an invalid sign-in response.',
+          'LifeLens could not complete Google Sign-In.',
         );
-      return token;
+      }
+      return _AuthTokens.fromJson(jsonDecode(body) as Map<String, dynamic>);
     } on SocketException {
       throw const AuthException(
         'Could not reach the secure LifeLens sign-in service.',
@@ -161,7 +161,7 @@ class AuthService {
     }
   }
 
-  Future<String> _authenticate(
+  Future<_AuthTokens> _authenticate(
     String endpoint,
     String email,
     String password,
@@ -183,13 +183,7 @@ class AuthService {
           'Unable to authenticate. Check your details and connection.',
         );
       }
-      final token =
-          (jsonDecode(body) as Map<String, dynamic>)['access_token'] as String?;
-      if (token == null || token.isEmpty)
-        throw const AuthException(
-          'Server returned an invalid sign-in response.',
-        );
-      return token;
+      return _AuthTokens.fromJson(jsonDecode(body) as Map<String, dynamic>);
     } on SocketException {
       throw const AuthException(
         'A secure internet connection is required to sign in.',
@@ -208,6 +202,11 @@ class AuthService {
     await secureStorage.clearToken();
   }
 
+  Future<void> _saveTokens(_AuthTokens tokens) async {
+    await secureStorage.saveToken(tokens.accessToken);
+    await secureStorage.saveRefreshToken(tokens.refreshToken);
+  }
+
   String _stableUserId(String email) {
     var hash = 0x811c9dc5;
     for (final unit in email.codeUnits) {
@@ -215,6 +214,24 @@ class AuthService {
       hash = (hash * 0x01000193) & 0xffffffff;
     }
     return 'user_${hash.toRadixString(16).padLeft(8, '0')}';
+  }
+}
+
+class _AuthTokens {
+  const _AuthTokens({required this.accessToken, required this.refreshToken});
+  final String accessToken;
+  final String refreshToken;
+
+  factory _AuthTokens.fromJson(Map<String, dynamic> json) {
+    final accessToken = json['access_token'] as String?;
+    final refreshToken = json['refresh_token'] as String?;
+    if (accessToken == null ||
+        refreshToken == null ||
+        accessToken.isEmpty ||
+        refreshToken.isEmpty) {
+      throw const AuthException('Server returned an invalid sign-in response.');
+    }
+    return _AuthTokens(accessToken: accessToken, refreshToken: refreshToken);
   }
 }
 

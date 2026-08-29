@@ -45,6 +45,8 @@ class PlannerEntry {
     required this.priority,
     required this.workload,
     this.isCompleted = false,
+    this.googleCalendarEventId,
+    this.timeMinutes = 540,
   });
 
   final int? id;
@@ -53,15 +55,31 @@ class PlannerEntry {
   final TaskPriority priority;
   final int workload;
   final bool isCompleted;
+  final String? googleCalendarEventId;
+  final int timeMinutes;
 
-  PlannerEntry copyWith({bool? isCompleted}) {
+  PlannerEntry copyWith({
+    int? id,
+    String? title,
+    DateTime? date,
+    TaskPriority? priority,
+    int? workload,
+    int? timeMinutes,
+    bool? isCompleted,
+    String? googleCalendarEventId,
+    bool clearGoogleCalendarEventId = false,
+  }) {
     return PlannerEntry(
-      id: id,
-      title: title,
-      date: date,
-      priority: priority,
-      workload: workload,
+      id: id ?? this.id,
+      title: title ?? this.title,
+      date: date ?? this.date,
+      priority: priority ?? this.priority,
+      workload: workload ?? this.workload,
       isCompleted: isCompleted ?? this.isCompleted,
+      googleCalendarEventId: clearGoogleCalendarEventId
+          ? null
+          : googleCalendarEventId ?? this.googleCalendarEventId,
+      timeMinutes: timeMinutes ?? this.timeMinutes,
     );
   }
 }

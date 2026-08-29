@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.database import get_db
 from app.models.daily_entry import BackendUser, DailyEntry
-from app.schemas.prediction import DailyPayload, GoogleSignInPayload, LoginPayload, RegisterPayload, ScoreResponse, TokenResponse
+from app.schemas.prediction import DailyPayload, GoogleSignInPayload, LoginPayload, RefreshTokenPayload, RegisterPayload, ScoreResponse, TokenResponse
 from app.services.feature_engineering import build_rolling_features
 from app.services.prediction import predict_burnout_risk, predict_overspending_risk
 from app.services.scoring import calculate_financial_health, calculate_productivity, build_recommendations
@@ -24,9 +24,19 @@ password_hash = PasswordHash.recommended()
 logger = logging.getLogger(__name__)
 
 
-def _issue_token(user_id: str) -> str:
+def _issue_access_token(user_id: str) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    return jwt.encode({"sub": user_id, "exp": expires_at}, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode({"sub": user_id, "type": "access", "exp": expires_at}, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def _issue_tokens(user_id: str) -> TokenResponse:
+    refresh_expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    refresh_token = jwt.encode(
+        {"sub": user_id, "type": "refresh", "exp": refresh_expires_at},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    return TokenResponse(access_token=_issue_access_token(user_id), refresh_token=refresh_token)
 
 
 def current_user_id(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> str:
@@ -35,7 +45,7 @@ def current_user_id(credentials: HTTPAuthorizationCredentials | None = Depends(s
     try:
         payload = jwt.decode(credentials.credentials, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         user_id = payload.get("sub")
-        if not isinstance(user_id, str) or not user_id:
+        if not isinstance(user_id, str) or not user_id or payload.get("type") != "access":
             raise ValueError("missing subject")
         return user_id
     except jwt.PyJWTError as error:
@@ -50,7 +60,7 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
     user = BackendUser(id=str(uuid4()), email=email, password_hash=password_hash.hash(payload.password))
     db.add(user)
     db.commit()
-    return TokenResponse(access_token=_issue_token(user.id))
+    return _issue_tokens(user.id)
 
 
 @router.post("/auth/login", response_model=TokenResponse)
@@ -58,7 +68,7 @@ def login(payload: LoginPayload, db: Session = Depends(get_db)):
     user = db.query(BackendUser).filter(BackendUser.email == str(payload.email).lower()).first()
     if user is None or not password_hash.verify(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    return TokenResponse(access_token=_issue_token(user.id))
+    return _issue_tokens(user.id)
 
 
 @router.post("/auth/google", response_model=TokenResponse)
@@ -110,7 +120,21 @@ def google_sign_in(payload: GoogleSignInPayload, db: Session = Depends(get_db)):
         else:
             user.google_subject = subject
         db.commit()
-    return TokenResponse(access_token=_issue_token(user.id))
+    return _issue_tokens(user.id)
+
+
+@router.post("/auth/refresh", response_model=TokenResponse)
+def refresh_token(payload: RefreshTokenPayload, db: Session = Depends(get_db)):
+    try:
+        claims = jwt.decode(payload.refresh_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        user_id = claims.get("sub")
+        if claims.get("type") != "refresh" or not isinstance(user_id, str):
+            raise ValueError("invalid refresh token")
+    except (jwt.PyJWTError, ValueError) as error:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token") from error
+    if db.query(BackendUser).filter(BackendUser.id == user_id).first() is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account no longer exists")
+    return _issue_tokens(user_id)
 
 
 @router.post("/predict/daily-score", response_model=ScoreResponse)

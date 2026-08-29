@@ -13,41 +13,56 @@ class NotificationService {
     await _plugin.initialize(settings);
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
   }
 
   Future<void> showRiskAlerts({
     required LifestyleScores scores,
     required DailyHealthEntry health,
+    required Future<bool> Function(String alertType) shouldShow,
+    required NotificationPreferences preferences,
   }) async {
-    if (scores.stressRisk >= 70) {
+    if (preferences.isQuietNow) return;
+    if (preferences.stressEnabled &&
+        scores.stressRisk >= preferences.stressThreshold &&
+        await shouldShow('stress')) {
       await _show(
         id: 1,
-        title: 'High stress risk',
-        body: 'Stress risk is ${scores.stressRisk}. Reduce one task today.',
+        title: 'Take one task off your plate',
+        body:
+            'Your stress risk is high today (${scores.stressRisk}/100). Move or simplify one non-essential task.',
       );
     }
-    if (scores.financialHealth <= 60) {
+    if (preferences.spendingEnabled &&
+        scores.financialHealth <= preferences.financialHealthThreshold &&
+        await shouldShow('spending')) {
       await _show(
         id: 2,
-        title: 'Spending alert',
-        body: 'Financial health is low. Review today\'s expenses.',
+        title: 'Pause non-essential spending',
+        body:
+            'Today\'s spending is above your healthy pace. Check your expenses before the next purchase.',
       );
     }
-    if (health.screenTimeHours >= 7) {
+    if (preferences.screenTimeEnabled &&
+        health.screenTimeHours >= preferences.screenTimeThreshold &&
+        await shouldShow('screen_time')) {
       await _show(
         id: 3,
-        title: 'Screen time is high',
+        title: 'Time for a screen break',
         body:
-            'Phone usage is ${health.screenTimeHours.toStringAsFixed(1)} hours today.',
+            'You have used your phone for ${health.screenTimeHours.toStringAsFixed(1)} hours today. Take a 10-minute away-from-screen break now.',
       );
     }
-    if (health.sleepHours < 6) {
+    if (preferences.sleepEnabled &&
+        health.sleepHours < preferences.sleepThreshold &&
+        await shouldShow('sleep')) {
       await _show(
         id: 4,
-        title: 'Sleep is low',
-        body: 'Sleep is below 6 hours. Plan an earlier bedtime tonight.',
+        title: 'Protect tonight\'s sleep',
+        body:
+            'You logged ${health.sleepHours.toStringAsFixed(1)} hours of sleep. Aim for an earlier wind-down tonight.',
       );
     }
   }
@@ -69,4 +84,65 @@ class NotificationService {
     const details = NotificationDetails(android: android);
     await _plugin.show(id, title, body, details);
   }
+}
+
+class NotificationPreferences {
+  const NotificationPreferences({
+    this.stressEnabled = true,
+    this.spendingEnabled = true,
+    this.screenTimeEnabled = true,
+    this.sleepEnabled = true,
+    this.stressThreshold = 70,
+    this.financialHealthThreshold = 60,
+    this.screenTimeThreshold = 7,
+    this.sleepThreshold = 6,
+    this.quietStartMinutes,
+    this.quietEndMinutes,
+  });
+
+  final bool stressEnabled, spendingEnabled, screenTimeEnabled, sleepEnabled;
+  final int stressThreshold, financialHealthThreshold;
+  final double screenTimeThreshold, sleepThreshold;
+  final int? quietStartMinutes, quietEndMinutes;
+
+  bool get isQuietNow {
+    if (quietStartMinutes == null || quietEndMinutes == null) return false;
+    final now = DateTime.now();
+    final current = now.hour * 60 + now.minute;
+    final start = quietStartMinutes!;
+    final end = quietEndMinutes!;
+    return start <= end
+        ? current >= start && current < end
+        : current >= start || current < end;
+  }
+
+  NotificationPreferences copyWith({
+    bool? stressEnabled,
+    bool? spendingEnabled,
+    bool? screenTimeEnabled,
+    bool? sleepEnabled,
+    int? stressThreshold,
+    int? financialHealthThreshold,
+    double? screenTimeThreshold,
+    double? sleepThreshold,
+    int? quietStartMinutes,
+    int? quietEndMinutes,
+    bool clearQuietHours = false,
+  }) => NotificationPreferences(
+    stressEnabled: stressEnabled ?? this.stressEnabled,
+    spendingEnabled: spendingEnabled ?? this.spendingEnabled,
+    screenTimeEnabled: screenTimeEnabled ?? this.screenTimeEnabled,
+    sleepEnabled: sleepEnabled ?? this.sleepEnabled,
+    stressThreshold: stressThreshold ?? this.stressThreshold,
+    financialHealthThreshold:
+        financialHealthThreshold ?? this.financialHealthThreshold,
+    screenTimeThreshold: screenTimeThreshold ?? this.screenTimeThreshold,
+    sleepThreshold: sleepThreshold ?? this.sleepThreshold,
+    quietStartMinutes: clearQuietHours
+        ? null
+        : quietStartMinutes ?? this.quietStartMinutes,
+    quietEndMinutes: clearQuietHours
+        ? null
+        : quietEndMinutes ?? this.quietEndMinutes,
+  );
 }

@@ -14,7 +14,7 @@ import 'secure_storage_service.dart';
 class LocalDatabaseService {
   static const databaseName = 'lifelens_secure.db';
   static const _legacyDatabaseName = 'lifelens.db';
-  static const databaseVersion = 5;
+  static const databaseVersion = 7;
 
   Database? _database;
   final SecureStorageService _secureStorage = SecureStorageService();
@@ -156,6 +156,18 @@ class LocalDatabaseService {
         'ALTER TABLE expenses ADD COLUMN recurring_label TEXT',
       );
     }
+    if (oldVersion < 6) {
+      await _tryExecute(
+        db,
+        'ALTER TABLE planner_tasks ADD COLUMN google_calendar_event_id TEXT',
+      );
+    }
+    if (oldVersion < 7) {
+      await _tryExecute(
+        db,
+        'ALTER TABLE planner_tasks ADD COLUMN time_minutes INTEGER NOT NULL DEFAULT 540',
+      );
+    }
   }
 
   Future<void> _tryExecute(Database db, String sql) async {
@@ -192,6 +204,8 @@ class LocalDatabaseService {
         created_at TEXT NOT NULL,
         updated_at TEXT,
         deleted_at TEXT,
+        google_calendar_event_id TEXT,
+        time_minutes INTEGER NOT NULL DEFAULT 540,
         FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
       )
     ''');
@@ -517,17 +531,45 @@ class LocalDatabaseService {
     );
   }
 
-  Future<void> insertTask(String userId, PlannerEntry entry) async {
+  Future<int> insertTask(String userId, PlannerEntry entry) async {
     final db = await database;
-    await db.insert('planner_tasks', {
+    return db.insert('planner_tasks', {
       'user_id': userId,
       'title': entry.title,
       'priority': entry.priority.name,
       'workload': entry.workload,
       'task_date': _dayKey(entry.date),
       'is_completed': 0,
+      'google_calendar_event_id': entry.googleCalendarEventId,
+      'time_minutes': entry.timeMinutes,
       'created_at': DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<void> updateTaskCalendarEventId(int id, String eventId) async {
+    final db = await database;
+    await db.update(
+      'planner_tasks',
+      {
+        'google_calendar_event_id': eventId,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updateTask(PlannerEntry entry) async {
+    if (entry.id == null) return;
+    final db = await database;
+    await db.update('planner_tasks', {
+      'title': entry.title,
+      'priority': entry.priority.name,
+      'workload': entry.workload,
+      'task_date': _dayKey(entry.date),
+      'time_minutes': entry.timeMinutes,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, where: 'id = ?', whereArgs: [entry.id]);
   }
 
   Future<List<PlannerEntry>> tasks(String userId) async {
@@ -670,7 +712,9 @@ class LocalDatabaseService {
     final now = DateTime.now().toIso8601String();
     await db.insert('daily_entries', {
       'user_id': userId,
-      'entry_date': _dayKey(DateTime.now()),
+      // Daily aggregates are keyed by the source health record's date, not by
+      // the time this method happens to run.
+      'entry_date': _dayKey(health.date),
       'sleep_hours': health.sleepHours,
       'steps': health.steps,
       'screen_time_hours': health.screenTimeHours,
@@ -797,6 +841,8 @@ class LocalDatabaseService {
       ),
       workload: row['workload'] as int,
       isCompleted: (row['is_completed'] as int? ?? 0) == 1,
+      googleCalendarEventId: row['google_calendar_event_id'] as String?,
+      timeMinutes: row['time_minutes'] as int? ?? 540,
     );
   }
 

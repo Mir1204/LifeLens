@@ -30,9 +30,15 @@ class PredictionPayload {
       'calendar_events': calendarEvents,
       'high_priority_tasks': highPriorityTasks,
       'total_workload': totalWorkload,
+      // Keep the day with the aggregate even though the UI does not display it.
+      // The backend uses it to build correct 3-day and 7-day windows.
+      'entry_date': _dayKey(health.date),
       if (monthlyBudget != null) 'monthly_budget': monthlyBudget!,
     };
   }
+
+  String _dayKey(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 }
 
 class PredictionApiService {
@@ -84,6 +90,34 @@ class PredictionApiService {
       }
 
       return LifestyleScores.fromJson(jsonDecode(body) as Map<String, dynamic>);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<String> refreshAccessToken({required String refreshToken}) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
+    try {
+      final request = await client.postUrl(Uri.parse('$baseUrl/auth/refresh'));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'refresh_token': refreshToken}));
+      final response = await request.close().timeout(
+        const Duration(seconds: 45),
+      );
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw const HttpException(
+          'Your session has expired. Please sign in again.',
+        );
+      }
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final accessToken = data['access_token'] as String?;
+      final nextRefreshToken = data['refresh_token'] as String?;
+      if (accessToken == null || nextRefreshToken == null) {
+        throw const HttpException('Server returned invalid session tokens.');
+      }
+      return jsonEncode({'access': accessToken, 'refresh': nextRefreshToken});
     } finally {
       client.close(force: true);
     }

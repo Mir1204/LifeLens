@@ -21,6 +21,7 @@ dependencies:
   sqflite_sqlcipher: ^3.1.0
   sqflite: ^2.4.2
   google_sign_in: ^6.2.2
+  workmanager: ^0.10.9
 
 dev_dependencies:
   flutter_test:

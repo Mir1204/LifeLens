@@ -6,6 +6,7 @@ import '../../models/app_usage_summary.dart';
 import '../../services/device_data_service.dart';
 import '../../services/lifelens_store.dart';
 import '../../widgets/trend_chart_card.dart';
+import 'sync_settings_widgets.dart';
 
 class InsightsScreen extends StatefulWidget {
   const InsightsScreen({super.key, required this.store});
@@ -67,232 +68,285 @@ class _InsightsScreenState extends State<InsightsScreen> {
         _InsightsOfflineBanner(isOnline: widget.store.isOnline),
         Expanded(
           child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Trends & Health',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Avg ${avgSleep.toStringAsFixed(1)} hrs sleep · Rs ${todaySpend.toStringAsFixed(0)}/day',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
-                    fontWeight: FontWeight.w600,
+            padding: const EdgeInsets.all(16),
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Trends & Health',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Avg ${avgSleep.toStringAsFixed(1)} hrs sleep · Rs ${todaySpend.toStringAsFixed(0)}/day',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: .6),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: .1),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: 7,
-                  isDense: true,
-                  iconSize: 16,
-                  icon: Icon(
-                    Icons.keyboard_arrow_down,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 7, child: Text('Last 7 Days')),
-                    DropdownMenuItem(value: 30, child: Text('Last 30 Days')),
-                  ],
-                  onChanged: (val) {},
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _LifestyleAlertCard(scores: scores, health: widget.store.health),
-        const SizedBox(height: 16),
-        Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: Card(
-            child: ExpansionTile(
-              title: const Text(
-                'Manual Health Entry',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
-              ),
-              leading: Icon(
-                Icons.edit_note,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              childrenPadding: const EdgeInsets.all(16).copyWith(top: 0),
-              children: [
-                TextField(
-                  controller: sleepController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Sleep hours',
-                    prefixIcon: Icon(Icons.bedtime),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: stepsController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Steps',
-                    prefixIcon: Icon(Icons.directions_walk),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: screenTimeController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Screen time hours',
-                    prefixIcon: Icon(Icons.phone_android),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _saveHealth,
-                    icon: const Icon(Icons.save),
-                    label: const Text('Update Inputs'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: isReadingHealth ? null : _readHealthConnect,
-                    icon: isReadingHealth
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.health_and_safety),
-                    label: const Text('Read Health Connect'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: isReadingUsage ? null : _readScreenTime,
-                    icon: isReadingUsage
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.phone_android),
-                    label: const Text('Read Screen Time'),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: deviceDataService.openUsageAccessSettings,
-                  icon: const Icon(Icons.settings),
-                  label: const Text('Open Usage Access Settings'),
-                ),
-                if (deviceError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    deviceError!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.w600,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: .1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: 7,
+                        isDense: true,
+                        iconSize: 16,
+                        icon: Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 7,
+                            child: Text('Last 7 Days'),
+                          ),
+                          DropdownMenuItem(
+                            value: 30,
+                            child: Text('Last 30 Days'),
+                          ),
+                        ],
+                        onChanged: (val) {},
+                      ),
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _ScreenTimeHero(
-          summary: currentUsage,
-          fallbackHours: widget.store.health.screenTimeHours,
-        ),
-        if (widget.store.scoreHistory.isEmpty && currentUsage == null) ...[
-          const SizedBox(height: 12),
-          const _HealthEmptyState(),
-        ],
-        if (currentUsage != null) ...[
-          const SizedBox(height: 12),
-          _MostUsedApps(summary: currentUsage),
-        ],
-        const SizedBox(height: 12),
-        TrendChartCard(
-          title: 'Sleep Trend',
-          points: [
-            for (final item in widget.store.scoreHistory)
-              TrendPoint(
-                label: item.date.day.toString(),
-                value: item.sleepHours,
               ),
-          ],
-          color: const Color(0xFF256D85),
-          suffix: 'h',
-        ),
-        const SizedBox(height: 12),
-        TrendChartCard(
-          title: 'Screen Time Trend',
-          points: [
-            for (final item in widget.store.scoreHistory)
-              TrendPoint(
-                label: item.date.day.toString(),
-                value: item.screenTimeHours,
-              ),
-          ],
-          color: const Color(0xFFC8553D),
-          suffix: 'h',
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Backend Ready Payload',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+              const SizedBox(height: 16),
+              _LifestyleAlertCard(scores: scores, health: widget.store.health),
+              const SizedBox(height: 16),
+              SyncStatusCard(store: widget.store),
+              const SizedBox(height: 12),
+              NotificationSettingsCard(store: widget.store),
+              const SizedBox(height: 16),
+              Card(
+                child: ListTile(
+                  leading: Icon(
+                    widget.store.isSyncing
+                        ? Icons.sync
+                        : Icons.cloud_done_outlined,
+                  ),
+                  title: Text(
+                    widget.store.isSyncing
+                        ? 'Syncing health data'
+                        : 'Sync status',
+                  ),
+                  subtitle: Text(
+                    widget.store.syncError ??
+                        (widget.store.lastSyncedAt == null
+                            ? 'Waiting for first secure sync'
+                            : 'Last synced ${widget.store.lastSyncedAt!.toLocal()}'),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: widget.store.isSyncing
+                        ? null
+                        : widget.store.syncWithBackend,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text('sleep_hours: ${widget.store.health.sleepHours}'),
-                Text('steps: ${widget.store.health.steps}'),
-                Text(
-                  'screen_time_hours: ${widget.store.health.screenTimeHours}',
+              ),
+              const SizedBox(height: 12),
+              Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: Card(
+                  child: ExpansionTile(
+                    title: const Text(
+                      'Manual Health Entry',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    leading: Icon(
+                      Icons.edit_note,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    childrenPadding: const EdgeInsets.all(16).copyWith(top: 0),
+                    children: [
+                      TextField(
+                        controller: sleepController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Sleep hours',
+                          prefixIcon: Icon(Icons.bedtime),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: stepsController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Steps',
+                          prefixIcon: Icon(Icons.directions_walk),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: screenTimeController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Screen time hours',
+                          prefixIcon: Icon(Icons.phone_android),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _saveHealth,
+                          icon: const Icon(Icons.save),
+                          label: const Text('Update Inputs'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: isReadingHealth
+                              ? null
+                              : _readHealthConnect,
+                          icon: isReadingHealth
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.health_and_safety),
+                          label: const Text('Read Health Connect'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: isReadingUsage ? null : _readScreenTime,
+                          icon: isReadingUsage
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.phone_android),
+                          label: const Text('Read Screen Time'),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: deviceDataService.openUsageAccessSettings,
+                        icon: const Icon(Icons.settings),
+                        label: const Text('Open Usage Access Settings'),
+                      ),
+                      if (deviceError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          deviceError!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                Text('daily_spending: ${widget.store.todaySpending}'),
-                Text('calendar_events: ${widget.store.tasks.length}'),
-                Text('high_priority_tasks: ${widget.store.highPriorityTasks}'),
-                Text('total_workload: ${widget.store.totalWorkload}'),
+              ),
+              const SizedBox(height: 12),
+              _ScreenTimeHero(
+                summary: currentUsage,
+                fallbackHours: widget.store.health.screenTimeHours,
+              ),
+              if (widget.store.scoreHistory.isEmpty &&
+                  currentUsage == null) ...[
+                const SizedBox(height: 12),
+                const _HealthEmptyState(),
               ],
-            ),
+              if (currentUsage != null) ...[
+                const SizedBox(height: 12),
+                _MostUsedApps(summary: currentUsage),
+              ],
+              const SizedBox(height: 12),
+              TrendChartCard(
+                title: 'Sleep Trend',
+                points: [
+                  for (final item in widget.store.scoreHistory)
+                    TrendPoint(
+                      label: item.date.day.toString(),
+                      value: item.sleepHours,
+                    ),
+                ],
+                color: const Color(0xFF256D85),
+                suffix: 'h',
+              ),
+              const SizedBox(height: 12),
+              TrendChartCard(
+                title: 'Screen Time Trend',
+                points: [
+                  for (final item in widget.store.scoreHistory)
+                    TrendPoint(
+                      label: item.date.day.toString(),
+                      value: item.screenTimeHours,
+                    ),
+                ],
+                color: const Color(0xFFC8553D),
+                suffix: 'h',
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Backend Ready Payload',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('sleep_hours: ${widget.store.health.sleepHours}'),
+                      Text('steps: ${widget.store.health.steps}'),
+                      Text(
+                        'screen_time_hours: ${widget.store.health.screenTimeHours}',
+                      ),
+                      Text('daily_spending: ${widget.store.todaySpending}'),
+                      Text('calendar_events: ${widget.store.tasks.length}'),
+                      Text(
+                        'high_priority_tasks: ${widget.store.highPriorityTasks}',
+                      ),
+                      Text('total_workload: ${widget.store.totalWorkload}'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
-        ),
-        const SizedBox(height: 24),
-      ],
-    ),
         ),
       ],
     );
@@ -654,9 +708,8 @@ class _LifestyleAlertCard extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 20, bottom: 4),
                         child: Text(
                           msg,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                       ),
                   ],
@@ -670,16 +723,27 @@ class _LifestyleAlertCard extends StatelessWidget {
 
   List<_AlertGroup> _buildAlerts() {
     final alerts = <_AlertGroup>[];
-    
+
     final stressAlerts = <String>[];
     if (scores.stressRisk >= 70) {
-      stressAlerts.add('High stress risk (${scores.stressRisk}/100) — reduce task load');
+      stressAlerts.add(
+        'High stress risk (${scores.stressRisk}/100) — reduce task load',
+      );
     }
     if (health.screenTimeHours >= 7) {
-      stressAlerts.add('Screen time is ${health.screenTimeHours.toStringAsFixed(1)}h — try a break');
+      stressAlerts.add(
+        'Screen time is ${health.screenTimeHours.toStringAsFixed(1)}h — try a break',
+      );
     }
     if (stressAlerts.isNotEmpty) {
-      alerts.add(_AlertGroup(title: 'Workload & Focus', icon: Icons.bolt, color: const Color(0xFFC8553D), messages: stressAlerts));
+      alerts.add(
+        _AlertGroup(
+          title: 'Workload & Focus',
+          icon: Icons.bolt,
+          color: const Color(0xFFC8553D),
+          messages: stressAlerts,
+        ),
+      );
     }
 
     final sleepAlerts = <String>[];
@@ -687,7 +751,14 @@ class _LifestyleAlertCard extends StatelessWidget {
       sleepAlerts.add('Sleep is below 6 hours — plan an earlier bedtime');
     }
     if (sleepAlerts.isNotEmpty) {
-      alerts.add(_AlertGroup(title: 'Sleep', icon: Icons.bedtime, color: const Color(0xFF287D5A), messages: sleepAlerts));
+      alerts.add(
+        _AlertGroup(
+          title: 'Sleep',
+          icon: Icons.bedtime,
+          color: const Color(0xFF287D5A),
+          messages: sleepAlerts,
+        ),
+      );
     }
 
     final financeAlerts = <String>[];
@@ -695,7 +766,14 @@ class _LifestyleAlertCard extends StatelessWidget {
       financeAlerts.add('Financial health is low — review today\'s spending');
     }
     if (financeAlerts.isNotEmpty) {
-      alerts.add(_AlertGroup(title: 'Finance', icon: Icons.account_balance_wallet, color: const Color(0xFFB88746), messages: financeAlerts));
+      alerts.add(
+        _AlertGroup(
+          title: 'Finance',
+          icon: Icons.account_balance_wallet,
+          color: const Color(0xFFB88746),
+          messages: financeAlerts,
+        ),
+      );
     }
 
     return alerts;
@@ -703,7 +781,12 @@ class _LifestyleAlertCard extends StatelessWidget {
 }
 
 class _AlertGroup {
-  const _AlertGroup({required this.title, required this.icon, required this.color, required this.messages});
+  const _AlertGroup({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.messages,
+  });
   final String title;
   final IconData icon;
   final Color color;
@@ -811,4 +894,3 @@ class _InsightsOfflineBannerState extends State<_InsightsOfflineBanner>
     );
   }
 }
-

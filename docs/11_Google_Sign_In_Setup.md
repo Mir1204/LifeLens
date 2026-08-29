@@ -10,14 +10,26 @@ LifeLens.
 1. In Google Cloud Console, create or select the project for LifeLens.
 2. Configure the OAuth consent screen and add the test users while the app is
    in testing.
-3. Create an **Android OAuth client** with package name
+3. Enable the **Google Calendar API** under **APIs & Services → Library**.
+4. Create an **Android OAuth client** with package name
    `com.example.lifelens_mobile` and the SHA-1 fingerprint for the signing key
    used on the phone.
-4. Create a **Web OAuth client**. Copy its client ID; it ends in
+5. Create a **Web OAuth client**. Copy its client ID; it ends in
    `.apps.googleusercontent.com`.
-5. In Render, set `GOOGLE_WEB_CLIENT_ID` to that Web client ID, then redeploy
+6. In Render, set `GOOGLE_WEB_CLIENT_ID` to that Web client ID, then redeploy
    the backend.
-6. Run Flutter with the same ID:
+7. Run Flutter with the same ID:
+
+## Google Calendar task events
+
+The Tasks screen asks for Calendar permission only when a user enables **Add to
+Google Calendar** for a task. In the same Google Cloud project, configure the
+OAuth consent screen and add the
+`https://www.googleapis.com/auth/calendar.events` scope, save the consent
+screen, and add the account as a test user while the app is in Testing. This
+gives LifeLens permission to create events in the user's primary calendar; it
+does not read existing events. The app creates a one-hour event at the time
+selected in LifeLens.
 
 ```powershell
 flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com

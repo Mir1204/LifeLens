@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -8,6 +9,7 @@ import '../models/app_user.dart';
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
 import 'device_data_service.dart';
+import 'google_calendar_service.dart';
 import 'local_database_service.dart';
 import 'notification_service.dart';
 import 'prediction_api_service.dart';
@@ -36,8 +38,14 @@ class LifeLensStore extends ChangeNotifier {
   String? syncError;
   String? backendStatus;
   DateTime? lastSyncedAt;
+  DateTime? lastBackgroundSyncedAt;
+  String? lastBackgroundSyncError;
+  NotificationPreferences notificationPreferences =
+      const NotificationPreferences();
   Timer? _connectivityTimer;
+  Timer? _deviceRefreshTimer;
   final DeviceDataService _deviceDataService = DeviceDataService();
+  final GoogleCalendarService _googleCalendarService = GoogleCalendarService();
   final SecureStorageService _secureStorage = SecureStorageService();
 
   final List<ExpenseEntry> expenses = [];
@@ -62,6 +70,47 @@ class LifeLensStore extends ChangeNotifier {
 
     final savedConsent = await database.setting('backend_sync_consent');
     backendSyncConsent = savedConsent == 'true';
+    notificationPreferences = NotificationPreferences(
+      stressEnabled:
+          (await database.setting('notify_stress_enabled')) != 'false',
+      spendingEnabled:
+          (await database.setting('notify_spending_enabled')) != 'false',
+      screenTimeEnabled:
+          (await database.setting('notify_screen_enabled')) != 'false',
+      sleepEnabled: (await database.setting('notify_sleep_enabled')) != 'false',
+      stressThreshold:
+          int.tryParse(
+            await database.setting('notify_stress_threshold') ?? '',
+          ) ??
+          70,
+      financialHealthThreshold:
+          int.tryParse(
+            await database.setting('notify_financial_threshold') ?? '',
+          ) ??
+          60,
+      screenTimeThreshold:
+          double.tryParse(
+            await database.setting('notify_screen_threshold') ?? '',
+          ) ??
+          7,
+      sleepThreshold:
+          double.tryParse(
+            await database.setting('notify_sleep_threshold') ?? '',
+          ) ??
+          6,
+      quietStartMinutes: int.tryParse(
+        await database.setting('notify_quiet_start') ?? '',
+      ),
+      quietEndMinutes: int.tryParse(
+        await database.setting('notify_quiet_end') ?? '',
+      ),
+    );
+    lastBackgroundSyncedAt = DateTime.tryParse(
+      await database.setting('background_sync_last_at') ?? '',
+    );
+    lastBackgroundSyncError = await database.setting(
+      'background_sync_last_error',
+    );
 
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
@@ -83,31 +132,64 @@ class LifeLensStore extends ChangeNotifier {
     notifyListeners();
 
     _autoFetchHealthData();
+    _startDeviceRefreshLoop();
     _startConnectivityLoop();
   }
 
   @override
   void dispose() {
     _connectivityTimer?.cancel();
+    _deviceRefreshTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _autoFetchHealthData() async {
+    DailyHealthEntry newHealth = health;
     try {
-      final newHealth = await _deviceDataService.readHealthConnect(
-        fallback: health,
-      );
-      health = newHealth;
-      await database.insertHealth(user.userId, newHealth);
-
+      newHealth = await _deviceDataService.readHealthConnect(fallback: health);
+    } catch (e) {
+      debugPrint('Health Connect refresh failed: $e');
+    }
+    try {
       final newUsage = await _deviceDataService.readAppUsage();
       appUsage = newUsage;
       await database.replaceScreenTimeApps(user.userId, newUsage);
-      notifyListeners();
-      syncWithBackend();
+      newHealth = DailyHealthEntry(
+        sleepHours: newHealth.sleepHours,
+        steps: newHealth.steps,
+        screenTimeHours: newUsage.totalHours,
+        source: 'device_sync',
+        date: newUsage.updatedAt,
+      );
     } catch (e) {
-      debugPrint('Auto-fetch failed: $e');
+      debugPrint('Screen-time refresh failed: $e');
     }
+    final today = DateTime.now();
+    if (!_isSameDay(newHealth.date, today)) {
+      newHealth = DailyHealthEntry(
+        sleepHours: newHealth.sleepHours,
+        steps: newHealth.steps,
+        screenTimeHours: newHealth.screenTimeHours,
+        source: newHealth.source,
+        date: today,
+      );
+    }
+    health = newHealth;
+    await database.insertHealth(user.userId, health);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    await _showRiskAlerts(_calculateLocalScores());
+    notifyListeners();
+    await syncWithBackend();
+  }
+
+  void _startDeviceRefreshLoop() {
+    _deviceRefreshTimer?.cancel();
+    // Usage Stats and Health Connect are re-read while the app is open, so the
+    // Trends page no longer depends on the manual refresh buttons.
+    _deviceRefreshTimer = Timer.periodic(const Duration(minutes: 30), (_) {
+      _autoFetchHealthData();
+    });
   }
 
   void _startConnectivityLoop() {
@@ -146,12 +228,13 @@ class LifeLensStore extends ChangeNotifier {
     return url;
   }
 
-  Future<void> addExpense(ExpenseEntry entry) async {
+  Future<void> addExpense(ExpenseEntry entry, {bool showAlerts = true}) async {
     remoteScores = null;
     final id = await database.insertExpense(user.userId, entry);
     expenses.insert(0, entry.copyWith(id: id));
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
+    if (showAlerts) await _showRiskAlerts(_calculateLocalScores());
     notifyListeners();
   }
 
@@ -176,12 +259,24 @@ class LifeLensStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addTask(PlannerEntry entry) async {
+  Future<void> addTask(
+    PlannerEntry entry, {
+    bool addToGoogleCalendar = false,
+    bool showAlerts = true,
+  }) async {
     remoteScores = null;
-    tasks.insert(0, entry);
-    await database.insertTask(user.userId, entry);
+    final id = await database.insertTask(user.userId, entry);
+    var savedEntry = entry.copyWith(id: id);
+    tasks.insert(0, savedEntry);
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
+    if (showAlerts) await _showRiskAlerts(_calculateLocalScores());
+    if (addToGoogleCalendar) {
+      final eventId = await _googleCalendarService.addTask(savedEntry);
+      await database.updateTaskCalendarEventId(id, eventId);
+      savedEntry = savedEntry.copyWith(googleCalendarEventId: eventId);
+      tasks[0] = savedEntry;
+    }
     notifyListeners();
   }
 
@@ -194,8 +289,24 @@ class LifeLensStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateTask(PlannerEntry entry) async {
+    if (entry.id == null) return;
+    final index = tasks.indexWhere((task) => task.id == entry.id);
+    if (index == -1) return;
+    await database.updateTask(entry);
+    tasks[index] = entry;
+    if (entry.googleCalendarEventId != null)
+      await _googleCalendarService.updateTask(entry);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
   Future<void> deleteTask(PlannerEntry entry) async {
     if (entry.id == null) return;
+    if (entry.googleCalendarEventId != null) {
+      await _googleCalendarService.deleteEvent(entry.googleCalendarEventId!);
+    }
     tasks.remove(entry);
     await database.softDeleteTask(entry.id!);
     await recordLocalScoreSnapshot();
@@ -210,6 +321,13 @@ class LifeLensStore extends ChangeNotifier {
     final updated = entry.copyWith(isCompleted: !entry.isCompleted);
     tasks[index] = updated;
     await database.toggleTaskComplete(entry.id!, done: updated.isCompleted);
+    if (updated.googleCalendarEventId != null) {
+      try {
+        await _googleCalendarService.updateTaskCompletion(updated);
+      } catch (error) {
+        debugPrint('Calendar completion update failed: $error');
+      }
+    }
     // Auto-delete completed task after a delay (15 seconds)
     if (updated.isCompleted) {
       Timer(const Duration(seconds: 15), () async {
@@ -229,11 +347,9 @@ class LifeLensStore extends ChangeNotifier {
     await database.insertHealth(user.userId, entry);
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
-    await notificationService.showRiskAlerts(
-      scores: calculateScores(),
-      health: health,
-    );
+    await _showRiskAlerts(calculateScores());
     notifyListeners();
+    await syncWithBackend();
   }
 
   void refreshScores() {
@@ -258,26 +374,35 @@ class LifeLensStore extends ChangeNotifier {
       final api = PredictionApiService(baseUrl: backendUrl);
       final isUp = await api.healthCheck();
       if (!isUp) throw Exception('Backend is down');
-      remoteScores = await api.predict(
-        PredictionPayload(
-          health: health,
-          dailySpending: todaySpending,
-          calendarEvents: tasks.length,
-          highPriorityTasks: highPriorityTasks,
-          totalWorkload: totalWorkload,
-          monthlyBudget: monthlySpendingBudget > 0
-              ? monthlySpendingBudget
-              : null,
-        ),
-        accessToken: accessToken,
+      final payload = PredictionPayload(
+        health: health,
+        dailySpending: spendingForDay(health.date),
+        calendarEvents: taskCountForDay(health.date),
+        highPriorityTasks: highPriorityTasksForDay(health.date),
+        totalWorkload: totalWorkloadForDay(health.date),
+        monthlyBudget: monthlySpendingBudget > 0 ? monthlySpendingBudget : null,
       );
+      try {
+        remoteScores = await api.predict(payload, accessToken: accessToken);
+      } on HttpException catch (error) {
+        if (!error.message.contains('401')) rethrow;
+        final refreshToken = await _secureStorage.refreshToken();
+        if (refreshToken == null) rethrow;
+        final refreshed =
+            jsonDecode(await api.refreshAccessToken(refreshToken: refreshToken))
+                as Map<String, dynamic>;
+        final refreshedAccessToken = refreshed['access'] as String;
+        await _secureStorage.saveToken(refreshedAccessToken);
+        await _secureStorage.saveRefreshToken(refreshed['refresh'] as String);
+        remoteScores = await api.predict(
+          payload,
+          accessToken: refreshedAccessToken,
+        );
+      }
       lastSyncedAt = DateTime.now();
       await _persistScore(remoteScores!);
       await _persistDailyEntry();
-      await notificationService.showRiskAlerts(
-        scores: remoteScores!,
-        health: health,
-      );
+      await _showRiskAlerts(remoteScores!);
     } catch (error) {
       syncError = error.toString();
     } finally {
@@ -302,6 +427,55 @@ class LifeLensStore extends ChangeNotifier {
   Future<void> saveBackendSyncConsent(bool value) async {
     backendSyncConsent = value;
     await database.saveSetting('backend_sync_consent', value.toString());
+    notifyListeners();
+  }
+
+  Future<void> saveNotificationPreferences(
+    NotificationPreferences value,
+  ) async {
+    notificationPreferences = value;
+    await Future.wait([
+      database.saveSetting(
+        'notify_stress_enabled',
+        value.stressEnabled.toString(),
+      ),
+      database.saveSetting(
+        'notify_spending_enabled',
+        value.spendingEnabled.toString(),
+      ),
+      database.saveSetting(
+        'notify_screen_enabled',
+        value.screenTimeEnabled.toString(),
+      ),
+      database.saveSetting(
+        'notify_sleep_enabled',
+        value.sleepEnabled.toString(),
+      ),
+      database.saveSetting(
+        'notify_stress_threshold',
+        value.stressThreshold.toString(),
+      ),
+      database.saveSetting(
+        'notify_financial_threshold',
+        value.financialHealthThreshold.toString(),
+      ),
+      database.saveSetting(
+        'notify_screen_threshold',
+        value.screenTimeThreshold.toString(),
+      ),
+      database.saveSetting(
+        'notify_sleep_threshold',
+        value.sleepThreshold.toString(),
+      ),
+      database.saveSetting(
+        'notify_quiet_start',
+        value.quietStartMinutes?.toString() ?? '',
+      ),
+      database.saveSetting(
+        'notify_quiet_end',
+        value.quietEndMinutes?.toString() ?? '',
+      ),
+    ]);
     notifyListeners();
   }
 
@@ -366,6 +540,7 @@ class LifeLensStore extends ChangeNotifier {
           note: 'Demo spike',
           recurringLabel: null,
         ),
+        showAlerts: false,
       );
       await addTask(
         PlannerEntry(
@@ -374,6 +549,7 @@ class LifeLensStore extends ChangeNotifier {
           priority: TaskPriority.high,
           workload: 5,
         ),
+        showAlerts: false,
       );
       await addTask(
         PlannerEntry(
@@ -382,6 +558,7 @@ class LifeLensStore extends ChangeNotifier {
           priority: TaskPriority.high,
           workload: 4,
         ),
+        showAlerts: false,
       );
     } else {
       await addExpense(
@@ -392,6 +569,7 @@ class LifeLensStore extends ChangeNotifier {
           note: 'Demo balanced day',
           recurringLabel: 'Snacks',
         ),
+        showAlerts: false,
       );
       await addTask(
         PlannerEntry(
@@ -400,6 +578,7 @@ class LifeLensStore extends ChangeNotifier {
           priority: TaskPriority.medium,
           workload: 2,
         ),
+        showAlerts: false,
       );
     }
 
@@ -427,17 +606,38 @@ class LifeLensStore extends ChangeNotifier {
     await database.upsertDailyEntry(
       userId: user.userId,
       health: health,
-      dailySpending: todaySpending,
-      calendarEvents: tasks.length,
-      highPriorityTasks: highPriorityTasks,
-      totalWorkload: totalWorkload,
+      dailySpending: spendingForDay(health.date),
+      calendarEvents: taskCountForDay(health.date),
+      highPriorityTasks: highPriorityTasksForDay(health.date),
+      totalWorkload: totalWorkloadForDay(health.date),
     );
   }
 
+  Future<void> _showRiskAlerts(LifestyleScores scores) {
+    return notificationService.showRiskAlerts(
+      scores: scores,
+      health: health,
+      shouldShow: _claimAlertForToday,
+      preferences: notificationPreferences,
+    );
+  }
+
+  Future<bool> _claimAlertForToday(String alertType) async {
+    final day =
+        '${health.date.year.toString().padLeft(4, '0')}-${health.date.month.toString().padLeft(2, '0')}-${health.date.day.toString().padLeft(2, '0')}';
+    final key = 'risk_alert_${user.userId}_${alertType}_$day';
+    if (await database.setting(key) == 'sent') return false;
+    await database.saveSetting(key, 'sent');
+    return true;
+  }
+
   double get todaySpending {
-    final now = DateTime.now();
+    return spendingForDay(DateTime.now());
+  }
+
+  double spendingForDay(DateTime day) {
     return expenses
-        .where((entry) => _isSameDay(entry.date, now))
+        .where((entry) => _isSameDay(entry.date, day))
         .fold(0, (total, entry) => total + entry.amount);
   }
 
@@ -457,11 +657,26 @@ class LifeLensStore extends ChangeNotifier {
     return budget / daysInMonth;
   }
 
-  int get highPriorityTasks =>
-      tasks.where((task) => task.priority == TaskPriority.high).length;
+  int get highPriorityTasks => highPriorityTasksForDay(DateTime.now());
 
-  int get totalWorkload =>
-      tasks.fold(0, (total, task) => total + task.workload);
+  int highPriorityTasksForDay(DateTime day) => tasks
+      .where(
+        (task) =>
+            !task.isCompleted &&
+            task.priority == TaskPriority.high &&
+            _isSameDay(task.date, day),
+      )
+      .length;
+
+  int get totalWorkload => totalWorkloadForDay(DateTime.now());
+
+  int taskCountForDay(DateTime day) => tasks
+      .where((task) => !task.isCompleted && _isSameDay(task.date, day))
+      .length;
+
+  int totalWorkloadForDay(DateTime day) => tasks
+      .where((task) => !task.isCompleted && _isSameDay(task.date, day))
+      .fold(0, (total, task) => total + task.workload);
 
   LifestyleScores calculateScores() {
     if (remoteScores != null) return remoteScores!;

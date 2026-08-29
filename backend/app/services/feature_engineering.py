@@ -27,8 +27,11 @@ def build_rolling_features(db: Session, user_id: str, today_entry: dict, entry_d
     averages gracefully fall back to today's values so predictions still work.
     """
 
-    last_7 = get_recent_entries(db, user_id, days=7, before=entry_date)
-    last_3 = get_recent_entries(db, user_id, days=3, before=entry_date)
+    # The route persists today's payload before calling this function. Read
+    # only preceding days here, then add today's live values exactly once.
+    history_end = entry_date - timedelta(days=1)
+    last_7 = get_recent_entries(db, user_id, days=7, before=history_end)
+    last_3 = get_recent_entries(db, user_id, days=3, before=history_end)
 
     def avg(entries, field, fallback):
         values = [getattr(e, field) for e in entries] + [fallback]
