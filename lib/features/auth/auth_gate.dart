@@ -19,7 +19,12 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    userFuture = authService.currentUser();
+    // Do not show a second Flutter splash after Android's launch screen. Local
+    // account lookup should be instant; fall back to Login after two seconds.
+    userFuture = authService.currentUser().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => null,
+    );
   }
 
   @override
@@ -28,7 +33,9 @@ class _AuthGateState extends State<AuthGate> {
       future: userFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const _SplashScreen();
+          // Visually continues the native launch screen rather than presenting
+          // a separate, second Flutter splash page.
+          return const Scaffold(body: SizedBox.expand());
         }
 
         final user = snapshot.data;
@@ -53,41 +60,5 @@ class _AuthGateState extends State<AuthGate> {
     setState(() {
       userFuture = Future.value(null);
     });
-  }
-}
-
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 36,
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              child: const Text(
-                'L',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'LifeLens',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

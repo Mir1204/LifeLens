@@ -12,6 +12,7 @@ import 'secure_storage_service.dart';
 
 const _backgroundSyncTask = 'lifelens.background_daily_sync';
 const _backgroundSyncWorkName = 'lifelens.background_daily_sync.work';
+const _initialBackgroundSyncWorkName = 'lifelens.background_initial_sync.work';
 
 @pragma('vm:entry-point')
 void lifeLensBackgroundDispatcher() {
@@ -31,11 +32,23 @@ class BackgroundSyncService {
       _backgroundSyncTask,
       frequency: const Duration(minutes: 15),
     );
+    await Workmanager().registerOneOffTask(
+      _initialBackgroundSyncWorkName,
+      _backgroundSyncTask,
+    );
+    await LocalDatabaseService().saveSetting(
+      'background_sync_scheduled_at',
+      DateTime.now().toIso8601String(),
+    );
   }
 
   Future<bool> run() async {
     try {
       final database = LocalDatabaseService();
+      await database.saveSetting(
+        'background_sync_last_attempt_at',
+        DateTime.now().toIso8601String(),
+      );
       final user = await database.signedInUser();
       if (user == null) return true;
 
@@ -100,7 +113,17 @@ class BackgroundSyncService {
         totalWorkload: workload,
       );
 
-      if (await database.setting('backend_sync_consent') != 'true') return true;
+      if (await database.setting('backend_sync_consent') != 'true') {
+        await database.saveSetting(
+          'background_sync_last_at',
+          DateTime.now().toIso8601String(),
+        );
+        await database.saveSetting(
+          'background_sync_last_error',
+          'Backend sync is disabled in Profile settings.',
+        );
+        return true;
+      }
       final token = await SecureStorageService().token();
       if (token == null) return true;
       final backendUrl =
@@ -117,7 +140,7 @@ class BackgroundSyncService {
         ),
         accessToken: token,
       );
-      await NotificationService.initialize();
+      await NotificationService.initialize(requestPermission: false);
       await NotificationService().showRiskAlerts(
         scores: scores,
         health: health,

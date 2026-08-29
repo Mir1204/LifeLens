@@ -61,8 +61,8 @@ class GoogleCalendarService {
           'summary': task.title,
           'description':
               'Added by LifeLens • ${task.priority.name} priority • workload ${task.workload}/5',
-          'start': {'dateTime': start.toIso8601String()},
-          'end': {'dateTime': end.toIso8601String()},
+          'start': {'dateTime': _rfc3339(start)},
+          'end': {'dateTime': _rfc3339(end)},
         }),
       );
       final response = await request.close().timeout(
@@ -182,10 +182,8 @@ class GoogleCalendarService {
           'summary': task.title,
           'description':
               'Added by LifeLens • ${task.priority.name} priority • workload ${task.workload}/5',
-          'start': {'dateTime': start.toIso8601String()},
-          'end': {
-            'dateTime': start.add(const Duration(hours: 1)).toIso8601String(),
-          },
+          'start': {'dateTime': _rfc3339(start)},
+          'end': {'dateTime': _rfc3339(start.add(const Duration(hours: 1)))},
         }),
       );
       final response = await request.close();
@@ -205,6 +203,17 @@ class GoogleCalendarService {
       if (message is String && message.isNotEmpty) return message;
     } catch (_) {}
     return 'check the Calendar API and OAuth scope in Google Cloud.';
+  }
+
+  /// Google Calendar requires RFC3339 with a timezone offset. Dart's local
+  /// DateTime.toIso8601String() has no offset, which Calendar rejects (400).
+  String _rfc3339(DateTime value) {
+    final offset = value.timeZoneOffset;
+    final sign = offset.isNegative ? '-' : '+';
+    final hours = offset.inHours.abs().toString().padLeft(2, '0');
+    final minutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
+    final local = value.toIso8601String();
+    return '$local$sign$hours:$minutes';
   }
 }
 

@@ -35,7 +35,7 @@ class SyncStatusCard extends StatelessWidget {
             ),
             Text('Foreground sync: ${last == null ? 'Not yet' : _stamp(last)}'),
             Text(
-              'Background sync: ${background == null ? 'Waiting for Android schedule' : _stamp(background)}',
+              'Background sync: ${background == null ? (store.backgroundSyncScheduledAt == null ? 'Not scheduled yet' : 'Scheduled by Android at ${_stamp(store.backgroundSyncScheduledAt!)}') : _stamp(background)}',
             ),
             Text(
               'Health Connect: ${store.health.source.contains('health') || store.health.source == 'device_sync' ? 'Last read available' : 'Manual / permission needed'}',
@@ -85,6 +85,28 @@ class NotificationSettingsCard extends StatelessWidget {
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final granted = await NotificationService.requestPermission();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        granted == true
+                            ? 'Notifications enabled.'
+                            : 'Notifications are disabled. Enable them in Android settings.',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.notifications_outlined),
+              label: const Text('Enable Android notifications'),
+            ),
+          ),
           _toggle(
             'Stress risk',
             p.stressEnabled,

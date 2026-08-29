@@ -39,6 +39,7 @@ class LifeLensStore extends ChangeNotifier {
   String? backendStatus;
   DateTime? lastSyncedAt;
   DateTime? lastBackgroundSyncedAt;
+  DateTime? backgroundSyncScheduledAt;
   String? lastBackgroundSyncError;
   NotificationPreferences notificationPreferences =
       const NotificationPreferences();
@@ -107,6 +108,9 @@ class LifeLensStore extends ChangeNotifier {
     );
     lastBackgroundSyncedAt = DateTime.tryParse(
       await database.setting('background_sync_last_at') ?? '',
+    );
+    backgroundSyncScheduledAt = DateTime.tryParse(
+      await database.setting('background_sync_scheduled_at') ?? '',
     );
     lastBackgroundSyncError = await database.setting(
       'background_sync_last_error',
