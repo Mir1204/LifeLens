@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     allowed_origins: str = ""
+    google_web_client_id: str
     burnout_model_path: str = "app/ml/artifacts/burnout_model.joblib"
     overspend_model_path: str = "app/ml/artifacts/overspend_model.joblib"
     static_stress_model_path: str = "app/ml/artifacts/static_stress_model.joblib"

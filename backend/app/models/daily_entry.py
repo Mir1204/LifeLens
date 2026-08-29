@@ -42,5 +42,7 @@ class BackendUser(Base):
 
     id = Column(String, primary_key=True)
     email = Column(String, nullable=False, unique=True, index=True)
-    password_hash = Column(String, nullable=False)
+    password_hash = Column(String, nullable=True)
+    google_subject = Column(String, nullable=True, unique=True, index=True)
+    display_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

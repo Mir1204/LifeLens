@@ -2,12 +2,28 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text
+
 from app.database import Base, engine
 from app.api.routes import router
 from app.core.config import settings
 
 # Creates the daily_entries table on startup if it doesn't exist yet.
 Base.metadata.create_all(bind=engine)
+
+# Lightweight migration for existing semester-project deployments.
+with engine.begin() as connection:
+    if engine.dialect.name == "postgresql":
+        connection.execute(text("ALTER TABLE backend_users ALTER COLUMN password_hash DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE backend_users ADD COLUMN IF NOT EXISTS google_subject VARCHAR UNIQUE"))
+        connection.execute(text("ALTER TABLE backend_users ADD COLUMN IF NOT EXISTS display_name VARCHAR"))
+    elif engine.dialect.name == "sqlite":
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(backend_users)"))}
+        if "google_subject" not in columns:
+            connection.execute(text("ALTER TABLE backend_users ADD COLUMN google_subject VARCHAR"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_backend_users_google_subject ON backend_users (google_subject)"))
+        if "display_name" not in columns:
+            connection.execute(text("ALTER TABLE backend_users ADD COLUMN display_name VARCHAR"))
 
 app = FastAPI(title="LifeLens API", version="1.0.0")
 

@@ -150,7 +150,9 @@ class _LoginScreenState extends State<LoginScreen>
                                 style: GoogleFonts.inter(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -160,9 +162,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     : 'Sign in to see your scores',
                                 style: GoogleFonts.inter(
                                   fontSize: 13,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                                  color: Theme.of(context).colorScheme.onSurface
                                       .withValues(alpha: .55),
                                 ),
                               ),
@@ -177,8 +177,8 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                   validator: (value) =>
                                       value == null || value.trim().length < 2
-                                          ? 'Enter your name'
-                                          : null,
+                                      ? 'Enter your name'
+                                      : null,
                                 ),
                                 const SizedBox(height: 14),
                               ],
@@ -222,8 +222,8 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                                 validator: (value) =>
                                     value == null || value.length < 4
-                                        ? 'Use at least 4 characters'
-                                        : null,
+                                    ? 'Use at least 4 characters'
+                                    : null,
                               ),
                               if (errorText != null) ...[
                                 const SizedBox(height: 12),
@@ -251,6 +251,29 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
                               const SizedBox(height: 20),
+                              OutlinedButton.icon(
+                                onPressed: isLoading ? null : _signInWithGoogle,
+                                icon: const Icon(Icons.g_mobiledata, size: 28),
+                                label: const Text('Continue with Google'),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(48),
+                                ),
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: Divider()),
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                      child: Text('or'),
+                                    ),
+                                    Expanded(child: Divider()),
+                                  ],
+                                ),
+                              ),
                               FilledButton.icon(
                                 onPressed: isLoading ? null : _submit,
                                 icon: isLoading
@@ -323,6 +346,20 @@ class _LoginScreenState extends State<LoginScreen>
       widget.onAuthenticated(user);
     } on AuthException catch (error) {
       setState(() => errorText = error.message);
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      isLoading = true;
+      errorText = null;
+    });
+    try {
+      widget.onAuthenticated(await authService.signInWithGoogle());
+    } on AuthException catch (error) {
+      if (mounted) setState(() => errorText = error.message);
     } finally {
       if (mounted) setState(() => isLoading = false);
     }

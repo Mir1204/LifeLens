@@ -2,9 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Secrets stay in Android Keystore-backed encrypted storage, never SQLite.
 class SecureStorageService {
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const _storage = FlutterSecureStorage(aOptions: AndroidOptions());
   static const _tokenKey = 'backend_access_token';
 
   Future<String?> token() => _storage.read(key: _tokenKey);

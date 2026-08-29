@@ -79,6 +79,13 @@ Screen time:
 
 For screen time, open the app's **Usage Access Settings** button and allow LifeLens.
 
+## Google Sign-In
+
+Google Sign-In is supported through the secure backend token flow. Complete the
+one-time Cloud Console and Render configuration in
+[`docs/11_Google_Sign_In_Setup.md`](docs/11_Google_Sign_In_Setup.md), then run
+the app with `--dart-define=GOOGLE_WEB_CLIENT_ID=...`.
+
 ## Local App Data
 
 The Flutter app now uses SQLite through `sqflite`.

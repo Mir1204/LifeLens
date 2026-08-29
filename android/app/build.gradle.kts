@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.example.lifelens_mobile"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

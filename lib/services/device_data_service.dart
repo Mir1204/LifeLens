@@ -1,7 +1,7 @@
-import 'package:app_usage/app_usage.dart';
 import 'package:flutter/services.dart';
 import 'package:health/health.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:usage_stats/usage_stats.dart';
 
 import '../models/app_usage_summary.dart';
 import '../models/lifestyle_entry.dart';
@@ -60,15 +60,19 @@ class DeviceDataService {
   Future<AppUsageSummary> readAppUsage() async {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
-    final usage = await AppUsage().getAppUsage(start, now);
+    final usage = await UsageStats.queryUsageStats(start, now);
     final filtered = usage
-        .where((item) => item.usage.inSeconds > 0)
+        .where((item) => (item.totalTimeInForegroundMs ?? 0) > 0)
         .toList()
-      ..sort((a, b) => b.usage.compareTo(a.usage));
+      ..sort(
+        (a, b) => (b.totalTimeInForegroundMs ?? 0).compareTo(
+          a.totalTimeInForegroundMs ?? 0,
+        ),
+      );
 
     final totalSeconds = filtered.fold<int>(
       0,
-      (total, item) => total + item.usage.inSeconds,
+      (total, item) => total + ((item.totalTimeInForegroundMs ?? 0) ~/ 1000),
     );
 
     return AppUsageSummary(
@@ -77,9 +81,9 @@ class DeviceDataService {
           .take(5)
           .map(
             (item) => UsedApp(
-              name: item.appName,
-              packageName: item.packageName,
-              hours: item.usage.inSeconds / 3600,
+              name: item.packageName ?? 'Unknown app',
+              packageName: item.packageName ?? '',
+              hours: (item.totalTimeInForegroundMs ?? 0) / 3600000,
             ),
           )
           .toList(),

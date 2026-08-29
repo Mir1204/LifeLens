@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../models/app_user.dart';
 import 'lifelens_store.dart';
 import 'local_database_service.dart';
@@ -57,6 +60,105 @@ class AuthService {
     await database.upsertUser(user: user, passwordHash: '', signedIn: true);
     await secureStorage.saveToken(token);
     return user;
+  }
+
+  Future<AppUser> signInWithGoogle() async {
+    const webClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+    if (webClientId.isEmpty) {
+      throw const AuthException(
+        'Google Sign-In is not configured for this build.',
+      );
+    }
+    GoogleSignInAccount? account;
+    try {
+      account = await GoogleSignIn(
+        scopes: const ['email', 'profile'],
+        serverClientId: webClientId,
+      ).signIn();
+    } on PlatformException catch (error) {
+      if (error.code == 'sign_in_failed') {
+        throw const AuthException(
+          'Google Sign-In setup does not match this Android app. Verify the package name and SHA-1 in Google Cloud Console.',
+        );
+      }
+      throw const AuthException(
+        'Google Sign-In could not start on this device.',
+      );
+    }
+    if (account == null)
+      throw const AuthException('Google Sign-In was cancelled.');
+    final authentication = await account.authentication;
+    final idToken = authentication.idToken;
+    if (idToken == null)
+      throw const AuthException(
+        'Google did not return a secure sign-in token.',
+      );
+
+    final token = await _authenticateGoogle(idToken);
+    final row = await database.userByEmail(account.email.toLowerCase());
+    final user = AppUser(
+      userId: row?['user_id'] as String? ?? _stableUserId(account.email),
+      name:
+          row?['name'] as String? ??
+          account.displayName ??
+          account.email.split('@').first,
+      email: account.email.toLowerCase(),
+      monthlyIncome: (row?['monthly_income'] as num?)?.toDouble(),
+      monthlyBudget: (row?['monthly_budget'] as num?)?.toDouble(),
+    );
+    await database.upsertUser(user: user, passwordHash: '', signedIn: true);
+    await secureStorage.saveToken(token);
+    return user;
+  }
+
+  Future<String> _authenticateGoogle(String idToken) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
+    try {
+      final request = await client.postUrl(
+        Uri.parse('${LifeLensStore.defaultBackendUrl}/auth/google'),
+      );
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'id_token': idToken}));
+      final response = await request.close().timeout(
+        const Duration(seconds: 45),
+      );
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode == HttpStatus.unauthorized) {
+        throw const AuthException(
+          'Google rejected this sign-in. Confirm the Web OAuth client ID is identical in the app and Render.',
+        );
+      }
+      if (response.statusCode == HttpStatus.serviceUnavailable) {
+        throw const AuthException(
+          'Google verification is temporarily unavailable. Please try again shortly.',
+        );
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw const AuthException('LifeLens could not complete Google Sign-In.');
+      }
+      final token =
+          (jsonDecode(body) as Map<String, dynamic>)['access_token'] as String?;
+      if (token == null || token.isEmpty)
+        throw const AuthException(
+          'Server returned an invalid sign-in response.',
+        );
+      return token;
+    } on SocketException {
+      throw const AuthException(
+        'Could not reach the secure LifeLens sign-in service.',
+      );
+    } on TimeoutException {
+      throw const AuthException(
+        'LifeLens sign-in timed out. Please try again.',
+      );
+    } on HttpException {
+      throw const AuthException(
+        'Could not contact the secure LifeLens sign-in service.',
+      );
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<String> _authenticate(
