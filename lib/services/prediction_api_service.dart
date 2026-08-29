@@ -6,7 +6,6 @@ import '../models/lifestyle_scores.dart';
 
 class PredictionPayload {
   const PredictionPayload({
-    required this.userId,
     required this.health,
     required this.dailySpending,
     required this.calendarEvents,
@@ -15,7 +14,6 @@ class PredictionPayload {
     this.monthlyBudget,
   });
 
-  final String userId;
   final DailyHealthEntry health;
   final double dailySpending;
   final int calendarEvents;
@@ -25,7 +23,6 @@ class PredictionPayload {
 
   Map<String, Object> toJson() {
     return {
-      'user_id': userId,
       'sleep_hours': health.sleepHours,
       'steps': health.steps,
       'screen_time_hours': health.screenTimeHours,
@@ -47,7 +44,8 @@ class PredictionApiService {
 
   Future<bool> healthCheck() async {
     final uri = Uri.parse('$baseUrl/health');
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
     try {
       final request = await client.getUrl(uri);
       final response = await request.close().timeout(
@@ -59,13 +57,21 @@ class PredictionApiService {
     }
   }
 
-  Future<LifestyleScores> predict(PredictionPayload payload) async {
+  Future<LifestyleScores> predict(
+    PredictionPayload payload, {
+    required String accessToken,
+  }) async {
     final uri = Uri.parse('$baseUrl/predict/daily-score');
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 60);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 60);
 
     try {
       final request = await client.postUrl(uri);
       request.headers.contentType = ContentType.json;
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer $accessToken',
+      );
       request.write(jsonEncode(payload.toJson()));
 
       final response = await request.close().timeout(
@@ -78,6 +84,26 @@ class PredictionApiService {
       }
 
       return LifestyleScores.fromJson(jsonDecode(body) as Map<String, dynamic>);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> deleteMyData({required String accessToken}) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
+    try {
+      final request = await client.deleteUrl(Uri.parse('$baseUrl/me/data'));
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer $accessToken',
+      );
+      final response = await request.close().timeout(
+        const Duration(seconds: 45),
+      );
+      if (response.statusCode != 204) {
+        throw const HttpException('Backend could not delete the account data.');
+      }
     } finally {
       client.close(force: true);
     }

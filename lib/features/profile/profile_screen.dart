@@ -156,6 +156,18 @@ class ProfileScreen extends StatelessWidget {
             label: const Text('Sign Out'),
           ),
         ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            onPressed: () => _confirmDeleteAllData(context),
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: const Text('Delete all account and health data'),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -175,6 +187,43 @@ class ProfileScreen extends StatelessWidget {
           duration: Duration(seconds: 2),
         ),
       );
+    }
+  }
+
+  Future<void> _confirmDeleteAllData(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete all data?'),
+        content: const Text(
+          'This permanently deletes your local health, screen-time, expenses, tasks, and backend account data. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete permanently'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await store.deleteAllData();
+      onSignOut();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to delete backend data. Check your connection and try again.',
+            ),
+          ),
+        );
+      }
     }
   }
 }
@@ -296,8 +345,6 @@ class _PrivacyCard extends StatelessWidget {
               value: store.backendSyncConsent,
               onChanged: store.saveBackendSyncConsent,
             ),
-            const SizedBox(height: 8),
-            _ProfileRow(label: 'Backend identity', value: store.backendUserId),
           ],
         ),
       ),
@@ -607,8 +654,6 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     );
   }
 }
-
-
 
 class _ProfileRow extends StatelessWidget {
   const _ProfileRow({required this.label, required this.value});

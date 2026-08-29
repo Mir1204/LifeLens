@@ -33,3 +33,14 @@ class DailyEntry(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "entry_date", name="uq_user_date"),
     )
+
+
+class BackendUser(Base):
+    """Authentication record. Password hashes are Argon2id hashes only."""
+
+    __tablename__ = "backend_users"
+
+    id = Column(String, primary_key=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

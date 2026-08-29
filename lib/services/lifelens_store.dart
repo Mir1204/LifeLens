@@ -11,6 +11,7 @@ import 'device_data_service.dart';
 import 'local_database_service.dart';
 import 'notification_service.dart';
 import 'prediction_api_service.dart';
+import 'secure_storage_service.dart';
 
 class LifeLensStore extends ChangeNotifier {
   LifeLensStore({required this.user}) {
@@ -30,13 +31,14 @@ class LifeLensStore extends ChangeNotifier {
   bool isLoading = true;
   bool isSyncing = false;
   bool isOnline = true;
-  bool backendSyncConsent = true;
+  bool backendSyncConsent = false;
   bool isTestingBackend = false;
   String? syncError;
   String? backendStatus;
   DateTime? lastSyncedAt;
   Timer? _connectivityTimer;
   final DeviceDataService _deviceDataService = DeviceDataService();
+  final SecureStorageService _secureStorage = SecureStorageService();
 
   final List<ExpenseEntry> expenses = [];
 
@@ -58,9 +60,8 @@ class LifeLensStore extends ChangeNotifier {
       await database.saveSetting('backend_url', backendUrl);
     }
 
-
     final savedConsent = await database.setting('backend_sync_consent');
-    backendSyncConsent = savedConsent != 'false';
+    backendSyncConsent = savedConsent == 'true';
 
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
@@ -80,7 +81,7 @@ class LifeLensStore extends ChangeNotifier {
 
     isLoading = false;
     notifyListeners();
-    
+
     _autoFetchHealthData();
     _startConnectivityLoop();
   }
@@ -93,7 +94,9 @@ class LifeLensStore extends ChangeNotifier {
 
   Future<void> _autoFetchHealthData() async {
     try {
-      final newHealth = await _deviceDataService.readHealthConnect(fallback: health);
+      final newHealth = await _deviceDataService.readHealthConnect(
+        fallback: health,
+      );
       health = newHealth;
       await database.insertHealth(user.userId, newHealth);
 
@@ -109,7 +112,9 @@ class LifeLensStore extends ChangeNotifier {
 
   void _startConnectivityLoop() {
     _connectivityTimer?.cancel();
-    _connectivityTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 15), (
+      timer,
+    ) async {
       if (isSyncing) return;
       try {
         final result = await InternetAddress.lookup('google.com');
@@ -132,9 +137,9 @@ class LifeLensStore extends ChangeNotifier {
   String _normalizeBackendUrl(String? savedUrl) {
     final url = savedUrl?.trim().replaceAll(RegExp(r'/+$'), '');
     if (url == null || url.isEmpty) return defaultBackendUrl;
-    if (url == 'http://172.20.10.2:8000' || 
-        url == 'http://172.20.10.3:8000' || 
-        url == 'http://127.0.0.1:8000' || 
+    if (url == 'http://172.20.10.2:8000' ||
+        url == 'http://172.20.10.3:8000' ||
+        url == 'http://127.0.0.1:8000' ||
         url == 'http://localhost:8000') {
       return defaultBackendUrl;
     }
@@ -237,18 +242,24 @@ class LifeLensStore extends ChangeNotifier {
 
   Future<void> syncWithBackend() async {
     if (isSyncing) return;
-    
+    if (!backendSyncConsent) {
+      syncError = null;
+      return;
+    }
+
     isSyncing = true;
     syncError = null;
     notifyListeners();
 
     try {
+      final accessToken = await _secureStorage.token();
+      if (accessToken == null)
+        throw Exception('Sign in again to enable protected backend sync.');
       final api = PredictionApiService(baseUrl: backendUrl);
       final isUp = await api.healthCheck();
       if (!isUp) throw Exception('Backend is down');
       remoteScores = await api.predict(
         PredictionPayload(
-          userId: backendUserId,
           health: health,
           dailySpending: todaySpending,
           calendarEvents: tasks.length,
@@ -258,6 +269,7 @@ class LifeLensStore extends ChangeNotifier {
               ? monthlySpendingBudget
               : null,
         ),
+        accessToken: accessToken,
       );
       lastSyncedAt = DateTime.now();
       await _persistScore(remoteScores!);
@@ -276,21 +288,32 @@ class LifeLensStore extends ChangeNotifier {
 
   Future<void> saveBackendUrl(String value) async {
     final normalized = value.trim().replaceAll(RegExp(r'/+$'), '');
-    if (normalized.isEmpty) return;
+    if (normalized.isEmpty || Uri.tryParse(normalized)?.scheme != 'https') {
+      backendStatus = 'Only secure HTTPS backend URLs are allowed.';
+      notifyListeners();
+      return;
+    }
     backendUrl = normalized;
     await database.saveSetting('backend_url', backendUrl);
     backendStatus = null;
     notifyListeners();
   }
 
-
-
-  String get backendUserId => 'anon_${_stableHash(user.userId)}';
-
   Future<void> saveBackendSyncConsent(bool value) async {
     backendSyncConsent = value;
     await database.saveSetting('backend_sync_consent', value.toString());
     notifyListeners();
+  }
+
+  Future<void> deleteAllData() async {
+    final token = await _secureStorage.token();
+    if (token != null) {
+      await PredictionApiService(
+        baseUrl: backendUrl,
+      ).deleteMyData(accessToken: token);
+    }
+    await database.deleteAllLocalData();
+    await _secureStorage.clearToken();
   }
 
   Future<void> testBackendConnection() async {
@@ -530,14 +553,5 @@ class LifeLensStore extends ChangeNotifier {
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  String _stableHash(String value) {
-    var hash = 0x811c9dc5;
-    for (final unit in 'lifelens_backend_v1:$value'.codeUnits) {
-      hash ^= unit;
-      hash = (hash * 0x01000193) & 0xffffffff;
-    }
-    return hash.toRadixString(16).padLeft(8, '0');
   }
 }

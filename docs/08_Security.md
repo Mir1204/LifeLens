@@ -14,13 +14,11 @@ Even in a student project, this data should be treated carefully.
 
 ## Current Security Status
 
-The current project is an MVP prototype. It includes local demo login, but it does not yet include:
-
-- Production authentication
-- User authorization
-- Encrypted local database
-- Fine-grained privacy controls
-- Production secret management
+The app now uses encrypted local storage, Android Keystore-backed secret
+storage, authenticated backend APIs, opt-in backend sync, HTTPS-only endpoint
+configuration, restrictive CORS, payload validation, private notifications,
+and permanent account/data deletion. Deployment must set `DATABASE_URL` and
+`JWT_SECRET_KEY` through its secret manager before the backend can start.
 
 ## Privacy-By-Design Controls Added For MVP
 
@@ -64,9 +62,9 @@ developer to directly identify a person from prediction rows.
 
 ### Explicit Sync Consent
 
-Backend prediction sync is disabled until the user enables the privacy consent
-toggle in Profile. If consent is off, the app continues using local scores and
-does not transmit daily lifestyle summaries to the backend.
+Backend prediction sync is disabled by default and the sync implementation
+enforces the setting before any network call. If consent is off, the app keeps
+calculating scores locally and does not transmit daily lifestyle summaries.
 
 ### Developer Access Controls For Production
 
@@ -81,31 +79,24 @@ user data casually:
 
 ## Current Risks
 
-### `.env` File Committed
+### Historic Secret Exposure
 
-The backend update includes a committed `backend/.env` file.
+`backend/.env` was committed in older history. It is ignored now, but any
+credential that was ever committed must be rotated and removed from Git history
+before a public release.
 
-This should be avoided because `.env` files may contain database credentials or secrets.
+### Deployment Configuration
 
-Recommended action:
+Set `ALLOWED_ORIGINS` to a comma-separated list of trusted web origins. Native
+mobile requests use bearer authentication; the API does not permit arbitrary
+browser origins.
 
-- Add `backend/.env` to `.gitignore`
-- Keep only `backend/.env.example` in Git
-- Rotate any real credentials if they were committed
+### Authentication
 
-### Open CORS
-
-Current backend CORS allows all origins:
-
-```python
-allow_origins=["*"]
-```
-
-This is acceptable for local development but should be restricted for deployment.
-
-### Local Demo Authentication
-
-The backend currently accepts `user_id` directly from the request body. The Flutter app generates a stable local ID from the signup email. For production, this should come from authenticated user identity.
+The backend derives the user identity from a short-lived signed bearer token,
+not from a request-supplied user ID. Passwords are stored only as Argon2id
+hashes on the backend; the mobile device stores an access token in Android
+Keystore-backed encrypted storage and never stores the password.
 
 ## Recommended Security Improvements
 

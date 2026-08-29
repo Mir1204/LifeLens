@@ -1,21 +1,20 @@
 # Path: app/schemas/prediction.py
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class DailyPayload(BaseModel):
     """Matches PredictionPayload.toJson() in Flutter's prediction_api_service.dart"""
 
-    user_id: str = Field(default="mir_demo_user")
-    sleep_hours: float
-    steps: int
-    screen_time_hours: float
-    daily_spending: float
-    calendar_events: int
-    high_priority_tasks: int
-    total_workload: int = 0
-    monthly_budget: float | None = None
+    sleep_hours: float = Field(ge=0, le=24)
+    steps: int = Field(ge=0, le=200_000)
+    screen_time_hours: float = Field(ge=0, le=24)
+    daily_spending: float = Field(ge=0, le=10_000_000)
+    calendar_events: int = Field(ge=0, le=1000)
+    high_priority_tasks: int = Field(ge=0, le=1000)
+    total_workload: int = Field(default=0, ge=0, le=10000)
+    monthly_budget: float | None = Field(default=None, ge=0, le=100_000_000)
     entry_date: date | None = None
 
 
@@ -28,3 +27,18 @@ class ScoreResponse(BaseModel):
     burnout_risk: str
     overspending_risk: str
     recommendations: list[str]
+
+
+class RegisterPayload(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+
+
+class LoginPayload(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

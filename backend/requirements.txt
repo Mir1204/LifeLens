@@ -9,3 +9,6 @@ pandas==2.3.1
 scikit-learn==1.7.1
 numpy==2.2.6
 xgboost>=2.0.0
+PyJWT==2.10.1
+pwdlib[argon2]==0.2.1
+email-validator==2.2.0

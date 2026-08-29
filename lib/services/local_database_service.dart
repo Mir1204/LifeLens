@@ -1,22 +1,34 @@
+import 'dart:io';
+import 'dart:math';
+
 import 'package:path/path.dart' as path;
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite.dart' as plaintext;
+import 'package:sqflite_sqlcipher/sqflite.dart';
 
 import '../models/app_usage_summary.dart';
 import '../models/app_user.dart';
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
+import 'secure_storage_service.dart';
 
 class LocalDatabaseService {
-  static const databaseName = 'lifelens.db';
-  static const databaseVersion = 4;
+  static const databaseName = 'lifelens_secure.db';
+  static const _legacyDatabaseName = 'lifelens.db';
+  static const databaseVersion = 5;
 
   Database? _database;
+  final SecureStorageService _secureStorage = SecureStorageService();
+  static const _databaseKeyName = 'lifelens_database_key';
 
   Future<Database> get database async {
     if (_database != null) return _database!;
     final dbPath = await getDatabasesPath();
+    final key = await _databaseKey();
+    final encryptedPath = path.join(dbPath, databaseName);
+    final legacyPath = path.join(dbPath, _legacyDatabaseName);
     _database = await openDatabase(
-      path.join(dbPath, databaseName),
+      encryptedPath,
+      password: key,
       version: databaseVersion,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
@@ -24,7 +36,50 @@ class LocalDatabaseService {
       onCreate: _createSchema,
       onUpgrade: _upgradeSchema,
     );
+    if (await File(legacyPath).exists()) {
+      await _migrateLegacyDatabase(legacyPath);
+    }
     return _database!;
+  }
+
+  /// Moves existing plaintext records once, then removes the old database file.
+  Future<void> _migrateLegacyDatabase(String legacyPath) async {
+    final legacy = await plaintext.openDatabase(legacyPath, readOnly: true);
+    try {
+      final tables = await legacy.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%'",
+      );
+      await _database!.transaction((transaction) async {
+        for (final tableRow in tables) {
+          final table = tableRow['name'] as String;
+          final rows = await legacy.query(table);
+          for (final row in rows) {
+            await transaction.insert(
+              table,
+              row,
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+        }
+      });
+    } finally {
+      await legacy.close();
+    }
+    await plaintext.deleteDatabase(legacyPath);
+  }
+
+  Future<String> _databaseKey() async {
+    // Database key is stored separately from the API token by using the
+    // Android Keystore-backed secure store. A new random key is created once.
+    final key = await _secureStorage.read(_databaseKeyName);
+    if (key != null) return key;
+    final random = Random.secure();
+    final generated = List.generate(
+      64,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join();
+    await _secureStorage.write(_databaseKeyName, generated);
+    return generated;
   }
 
   Future<void> _upgradeSchema(
@@ -375,6 +430,26 @@ class LocalDatabaseService {
   Future<void> signOutAll() async {
     final db = await database;
     await db.update('local_users', {'signed_in': 0});
+  }
+
+  Future<void> deleteAllLocalData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final table in const [
+        'recommendations',
+        'score_snapshots',
+        'daily_entries',
+        'screen_time_apps',
+        'health_records',
+        'planner_tasks',
+        'expenses',
+        'sync_outbox',
+        'local_users',
+        'app_settings',
+      ]) {
+        await txn.delete(table);
+      }
+    });
   }
 
   Future<void> updateUserProfile(AppUser user) async {

@@ -63,6 +63,8 @@ class NotificationService {
       channelDescription: 'Lifestyle risk alerts from LifeLens',
       importance: Importance.high,
       priority: Priority.high,
+      visibility: NotificationVisibility.private,
+      ticker: 'LifeLens private alert',
     );
     const details = NotificationDetails(android: android);
     await _plugin.show(id, title, body, details);
