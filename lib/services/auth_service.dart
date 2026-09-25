@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../models/app_user.dart';
 import 'lifelens_store.dart';
 import 'local_database_service.dart';
+import 'prediction_api_service.dart';
 import 'secure_storage_service.dart';
 
 /// Accounts are authenticated by the backend. The phone retains no password.
@@ -198,6 +199,19 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    final refreshToken = await secureStorage.refreshToken();
+    if (refreshToken != null) {
+      try {
+        final backendUrl =
+            await database.setting('backend_url') ??
+            'https://lifelens-backend-xh56.onrender.com';
+        await PredictionApiService(
+          baseUrl: backendUrl,
+        ).revokeRefreshSession(refreshToken: refreshToken);
+      } catch (_) {
+        // Local credentials are still removed even if the device is offline.
+      }
+    }
     await database.signOutAll();
     await secureStorage.clearToken();
   }

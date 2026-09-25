@@ -135,6 +135,8 @@ class _HomeDashboard extends StatelessWidget {
       children: [
         if (store.isLoading) const LinearProgressIndicator(),
         _LifeLensStatusHero(scores: scores, sync: sync, store: store),
+        const SizedBox(height: 12),
+        _TodayProgressCard(store: store),
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
@@ -343,6 +345,115 @@ class _SyncState {
   final Color color;
 }
 
+class _TodayProgressCard extends StatelessWidget {
+  const _TodayProgressCard({required this.store});
+
+  final LifeLensStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final goals = store.goals;
+    final today = DateTime.now();
+    final todayTasks = store.tasks.where(
+      (task) =>
+          task.date.year == today.year &&
+          task.date.month == today.month &&
+          task.date.day == today.day,
+    );
+    final taskTotal = todayTasks.length;
+    final taskDone = todayTasks.where((task) => task.isCompleted).length;
+    final metrics = [
+      _ProgressMetric(
+        icon: Icons.bedtime_outlined,
+        label: 'Sleep',
+        value: '${store.health.sleepHours.toStringAsFixed(1)}h',
+        progress: store.health.sleepHours / goals.sleepHours,
+      ),
+      _ProgressMetric(
+        icon: Icons.directions_walk_outlined,
+        label: 'Steps',
+        value: '${store.health.steps}',
+        progress: store.health.steps / goals.steps,
+      ),
+      _ProgressMetric(
+        icon: Icons.task_alt_outlined,
+        label: 'Tasks',
+        value: '$taskDone/$taskTotal',
+        progress: taskTotal == 0 ? 0 : taskDone / taskTotal,
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Today’s progress',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                for (final metric in metrics) ...[
+                  Expanded(child: _ProgressMetricView(metric: metric)),
+                  if (metric != metrics.last) const SizedBox(width: 10),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProgressMetric {
+  const _ProgressMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.progress,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final double progress;
+}
+
+class _ProgressMetricView extends StatelessWidget {
+  const _ProgressMetricView({required this.metric});
+  final _ProgressMetric metric;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(metric.icon, size: 18, color: scheme.primary),
+        const SizedBox(height: 6),
+        Text(metric.label, style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(height: 1),
+        Text(metric.value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(5),
+          child: LinearProgressIndicator(
+            minHeight: 5,
+            value: metric.progress.clamp(0.0, 1.0),
+            backgroundColor: scheme.primary.withValues(alpha: .12),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Hero status card ─────────────────────────────────────────────────────────
 
 class _LifeLensStatusHero extends StatelessWidget {
@@ -373,10 +484,7 @@ class _LifeLensStatusHero extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: .12),
-            color.withValues(alpha: .05),
-          ],
+          colors: [color.withValues(alpha: .12), color.withValues(alpha: .05)],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: color.withValues(alpha: .22)),
@@ -985,17 +1093,13 @@ class _MetricRow extends StatelessWidget {
           Expanded(child: Text(label)),
           Text(
             value,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: valueColor,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800, color: valueColor),
           ),
         ],
       ),
     );
   }
 }
-
 
 // ── Connectivity Badge ────────────────────────────────────────────────────────
 
@@ -1146,4 +1250,3 @@ class _OfflineBannerState extends State<_OfflineBanner>
     );
   }
 }
-

@@ -47,6 +47,8 @@ class PlannerEntry {
     this.isCompleted = false,
     this.googleCalendarEventId,
     this.timeMinutes = 540,
+    this.note = '',
+    this.reminderMinutes,
   });
 
   final int? id;
@@ -57,6 +59,8 @@ class PlannerEntry {
   final bool isCompleted;
   final String? googleCalendarEventId;
   final int timeMinutes;
+  final String note;
+  final int? reminderMinutes;
 
   PlannerEntry copyWith({
     int? id,
@@ -65,6 +69,9 @@ class PlannerEntry {
     TaskPriority? priority,
     int? workload,
     int? timeMinutes,
+    String? note,
+    int? reminderMinutes,
+    bool clearReminder = false,
     bool? isCompleted,
     String? googleCalendarEventId,
     bool clearGoogleCalendarEventId = false,
@@ -80,6 +87,10 @@ class PlannerEntry {
           ? null
           : googleCalendarEventId ?? this.googleCalendarEventId,
       timeMinutes: timeMinutes ?? this.timeMinutes,
+      note: note ?? this.note,
+      reminderMinutes: clearReminder
+          ? null
+          : reminderMinutes ?? this.reminderMinutes,
     );
   }
 }

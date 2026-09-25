@@ -36,15 +36,14 @@ class TrendChartCard extends StatelessWidget {
                   child: Text(
                     title,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 if (points.isNotEmpty)
                   Text(
                     '${points.last.value.toStringAsFixed(1)}$suffix',
-                    style:
-                        TextStyle(color: color, fontWeight: FontWeight.w800),
+                    style: TextStyle(color: color, fontWeight: FontWeight.w800),
                   ),
               ],
             ),
@@ -64,19 +63,17 @@ class TrendChartCard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         'No history yet',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       Text(
                         'Data will appear after your first sync',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: .45),
-                            ),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: .45),
+                        ),
                       ),
                     ],
                   ),
@@ -88,15 +85,16 @@ class TrendChartCard extends StatelessWidget {
                 child: LineChart(
                   LineChartData(
                     minY: 0,
-                    maxY: points
+                    maxY:
+                        points
                                 .map((p) => p.value)
                                 .fold<double>(0, (m, v) => v > m ? v : m) <=
                             0
                         ? 100
                         : points
-                                .map((p) => p.value)
-                                .fold<double>(0, (m, v) => v > m ? v : m) *
-                            1.2,
+                                  .map((p) => p.value)
+                                  .fold<double>(0, (m, v) => v > m ? v : m) *
+                              1.2,
                     gridData: FlGridData(
                       drawVerticalLine: false,
                       getDrawingHorizontalLine: (value) => FlLine(
@@ -146,11 +144,7 @@ class TrendChartCard extends StatelessWidget {
 }
 
 class CategoryPieCard extends StatelessWidget {
-  const CategoryPieCard({
-    super.key,
-    required this.title,
-    required this.values,
-  });
+  const CategoryPieCard({super.key, required this.title, required this.values});
 
   final String title;
   final Map<String, double> values;
@@ -174,9 +168,9 @@ class CategoryPieCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 14),
             if (entries.isEmpty)

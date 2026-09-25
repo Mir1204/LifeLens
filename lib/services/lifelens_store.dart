@@ -8,6 +8,7 @@ import '../models/app_usage_summary.dart';
 import '../models/app_user.dart';
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
+import '../models/wellbeing_models.dart';
 import 'device_data_service.dart';
 import 'google_calendar_service.dart';
 import 'local_database_service.dart';
@@ -52,6 +53,11 @@ class LifeLensStore extends ChangeNotifier {
   final List<ExpenseEntry> expenses = [];
 
   final List<PlannerEntry> tasks = [];
+  List<DailyCheckIn> checkIns = [];
+  List<String> customExpenseCategories = [];
+  List<String> customRecurringLabels = [];
+  UserGoals goals = const UserGoals();
+  List<Map<String, Object?>> pendingSyncItems = [];
 
   DailyHealthEntry health = DailyHealthEntry(
     sleepHours: 6.5,
@@ -121,6 +127,8 @@ class LifeLensStore extends ChangeNotifier {
     final latestHealth = await database.latestHealth(user.userId);
     final latestAppUsage = await database.latestAppUsage(user.userId);
     final loadedScores = await database.scoreHistory(user.userId, 7);
+    final loadedCheckIns = await database.checkIns(user.userId);
+    final pendingItems = await database.pendingSyncItems(user.userId);
 
     expenses
       ..clear()
@@ -131,6 +139,28 @@ class LifeLensStore extends ChangeNotifier {
     if (latestHealth != null) health = latestHealth;
     appUsage = latestAppUsage;
     scoreHistory = loadedScores;
+    checkIns = loadedCheckIns;
+    pendingSyncItems = pendingItems;
+    customExpenseCategories = _savedStringList(
+      await database.setting('expense_categories_${user.userId}'),
+    );
+    customRecurringLabels = _savedStringList(
+      await database.setting('expense_recurring_labels_${user.userId}'),
+    );
+    goals = UserGoals(
+      sleepHours:
+          double.tryParse(await database.setting('goal_sleep_hours') ?? '') ??
+          7.5,
+      steps: int.tryParse(await database.setting('goal_steps') ?? '') ?? 8000,
+      screenTimeHours:
+          double.tryParse(await database.setting('goal_screen_hours') ?? '') ??
+          5,
+      monthlyBudget:
+          double.tryParse(
+            await database.setting('goal_monthly_budget') ?? '',
+          ) ??
+          monthlySpendingBudget,
+    );
 
     isLoading = false;
     notifyListeners();
@@ -138,6 +168,41 @@ class LifeLensStore extends ChangeNotifier {
     _autoFetchHealthData();
     _startDeviceRefreshLoop();
     _startConnectivityLoop();
+  }
+
+  List<String> _savedStringList(String? raw) {
+    if (raw == null) return [];
+    try {
+      return (jsonDecode(raw) as List<dynamic>)
+          .whereType<String>()
+          .where((value) => value.trim().isNotEmpty)
+          .toSet()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> addCustomExpenseCategory(String value) async {
+    final clean = value.trim();
+    if (clean.isEmpty || customExpenseCategories.contains(clean)) return;
+    customExpenseCategories = [...customExpenseCategories, clean];
+    await database.saveSetting(
+      'expense_categories_${user.userId}',
+      jsonEncode(customExpenseCategories),
+    );
+    notifyListeners();
+  }
+
+  Future<void> addCustomRecurringLabel(String value) async {
+    final clean = value.trim();
+    if (clean.isEmpty || customRecurringLabels.contains(clean)) return;
+    customRecurringLabels = [...customRecurringLabels, clean];
+    await database.saveSetting(
+      'expense_recurring_labels_${user.userId}',
+      jsonEncode(customRecurringLabels),
+    );
+    notifyListeners();
   }
 
   @override
@@ -229,7 +294,8 @@ class LifeLensStore extends ChangeNotifier {
         url == 'http://localhost:8000') {
       return defaultBackendUrl;
     }
-    return url;
+    // Sensitive health and account data must never be sent over cleartext.
+    return Uri.tryParse(url)?.scheme == 'https' ? url : defaultBackendUrl;
   }
 
   Future<void> addExpense(ExpenseEntry entry, {bool showAlerts = true}) async {
@@ -276,11 +342,24 @@ class LifeLensStore extends ChangeNotifier {
     await _persistDailyEntry();
     if (showAlerts) await _showRiskAlerts(_calculateLocalScores());
     if (addToGoogleCalendar) {
-      final eventId = await _googleCalendarService.addTask(savedEntry);
-      await database.updateTaskCalendarEventId(id, eventId);
-      savedEntry = savedEntry.copyWith(googleCalendarEventId: eventId);
-      tasks[0] = savedEntry;
+      try {
+        final eventId = await _googleCalendarService.addTask(savedEntry);
+        await database.updateTaskCalendarEventId(id, eventId);
+        savedEntry = savedEntry.copyWith(googleCalendarEventId: eventId);
+        tasks[0] = savedEntry;
+      } catch (error) {
+        await database.enqueueSync(
+          userId: user.userId,
+          entityType: 'calendar_task',
+          entityId: id,
+          operation: 'create',
+          payload: entry.title,
+          error: error.toString(),
+        );
+      }
     }
+    await _scheduleTaskReminder(savedEntry);
+    pendingSyncItems = await database.pendingSyncItems(user.userId);
     notifyListeners();
   }
 
@@ -299,8 +378,25 @@ class LifeLensStore extends ChangeNotifier {
     if (index == -1) return;
     await database.updateTask(entry);
     tasks[index] = entry;
-    if (entry.googleCalendarEventId != null)
-      await _googleCalendarService.updateTask(entry);
+    if (entry.googleCalendarEventId != null) {
+      try {
+        await _googleCalendarService.updateTask(entry);
+      } catch (error) {
+        await database.enqueueSync(
+          userId: user.userId,
+          entityType: 'calendar_task',
+          entityId: entry.id,
+          operation: 'update',
+          payload: entry.title,
+          error: error.toString(),
+        );
+      }
+    }
+    if (entry.reminderMinutes == null) {
+      await notificationService.cancelTaskReminder(entry.id!);
+    } else {
+      await _scheduleTaskReminder(entry);
+    }
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
     notifyListeners();
@@ -309,12 +405,25 @@ class LifeLensStore extends ChangeNotifier {
   Future<void> deleteTask(PlannerEntry entry) async {
     if (entry.id == null) return;
     if (entry.googleCalendarEventId != null) {
-      await _googleCalendarService.deleteEvent(entry.googleCalendarEventId!);
+      try {
+        await _googleCalendarService.deleteEvent(entry.googleCalendarEventId!);
+      } catch (error) {
+        await database.enqueueSync(
+          userId: user.userId,
+          entityType: 'calendar_task',
+          entityId: entry.id,
+          operation: 'delete',
+          payload: entry.googleCalendarEventId!,
+          error: error.toString(),
+        );
+      }
     }
+    await notificationService.cancelTaskReminder(entry.id!);
     tasks.remove(entry);
     await database.softDeleteTask(entry.id!);
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
+    pendingSyncItems = await database.pendingSyncItems(user.userId);
     notifyListeners();
   }
 
@@ -483,6 +592,127 @@ class LifeLensStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> saveCheckIn(DailyCheckIn value) async {
+    await database.saveCheckIn(user.userId, value);
+    checkIns = await database.checkIns(user.userId);
+    await database.enqueueSync(
+      userId: user.userId,
+      entityType: 'checkin',
+      operation: 'upsert',
+      payload: 'daily check-in',
+    );
+    pendingSyncItems = await database.pendingSyncItems(user.userId);
+    await recordLocalScoreSnapshot();
+    await _persistDailyEntry();
+    notifyListeners();
+  }
+
+  Future<void> saveGoals(UserGoals value) async {
+    goals = value;
+    await Future.wait([
+      database.saveSetting('goal_sleep_hours', value.sleepHours.toString()),
+      database.saveSetting('goal_steps', value.steps.toString()),
+      database.saveSetting(
+        'goal_screen_hours',
+        value.screenTimeHours.toString(),
+      ),
+      database.saveSetting(
+        'goal_monthly_budget',
+        value.monthlyBudget.toString(),
+      ),
+    ]);
+    notifyListeners();
+  }
+
+  Future<void> retryPendingSync() async {
+    final pending = await database.pendingSyncItems(user.userId);
+    for (final item in pending) {
+      final id = item['id'] as int;
+      final entityId = item['entity_id'] as int?;
+      try {
+        if (item['entity_type'] == 'calendar_task') {
+          final task = entityId == null
+              ? null
+              : tasks
+                    .where((x) => x.id == entityId)
+                    .cast<PlannerEntry?>()
+                    .firstOrNull;
+          if (item['operation'] == 'delete') {
+            await _googleCalendarService.deleteEvent(
+              item['payload_json'] as String,
+            );
+          } else if (task != null && entityId != null) {
+            if (item['operation'] == 'create') {
+              final eventId = await _googleCalendarService.addTask(task);
+              await database.updateTaskCalendarEventId(entityId, eventId);
+              final index = tasks.indexWhere((x) => x.id == entityId);
+              tasks[index] = task.copyWith(googleCalendarEventId: eventId);
+            } else if (item['operation'] == 'update') {
+              await _googleCalendarService.updateTask(task);
+            }
+          }
+        } else if (item['entity_type'] == 'checkin') {
+          // Check-ins are deliberately local-only; mark their local save done.
+        }
+        await database.markSyncItemDone(id);
+      } catch (_) {}
+    }
+    pendingSyncItems = await database.pendingSyncItems(user.userId);
+    notifyListeners();
+  }
+
+  WeeklyReport get weeklyReport {
+    final history = scoreHistory;
+    final sleep = history.isEmpty
+        ? health.sleepHours
+        : history.map((x) => x.sleepHours).reduce((a, b) => a + b) /
+              history.length;
+    final screenChange = history.length < 2
+        ? 0.0
+        : history.last.screenTimeHours - history.first.screenTimeHours;
+    final completed = tasks.where((t) => t.isCompleted).length;
+    final rate = tasks.isEmpty ? 0.0 : completed / tasks.length * 100;
+    final advice = sleep < goals.sleepHours
+        ? 'Protect a consistent bedtime this week.'
+        : screenChange > 1
+        ? 'Your screen time is rising—plan a phone-free break.'
+        : 'Your routine is moving in a healthy direction.';
+    return WeeklyReport(
+      sleepAverage: sleep,
+      screenTimeChange: screenChange,
+      spending: expenses
+          .where(
+            (e) => e.date.isAfter(
+              DateTime.now().subtract(const Duration(days: 7)),
+            ),
+          )
+          .fold<double>(0, (a, b) => a + b.amount),
+      completionRate: rate,
+      recommendation: advice,
+    );
+  }
+
+  int get sleepGoalStreak => scoreHistory.reversed
+      .takeWhile((x) => x.sleepHours >= goals.sleepHours)
+      .length;
+  int get screenTimeGoalStreak => scoreHistory.reversed
+      .takeWhile((x) => x.screenTimeHours <= goals.screenTimeHours)
+      .length;
+
+  Future<void> _scheduleTaskReminder(PlannerEntry task) async {
+    if (task.id == null || task.reminderMinutes == null) return;
+    final when = DateTime(
+      task.date.year,
+      task.date.month,
+      task.date.day,
+    ).add(Duration(minutes: task.timeMinutes - task.reminderMinutes!));
+    await notificationService.scheduleTaskReminder(
+      id: task.id!,
+      when: when,
+      title: task.title,
+    );
+  }
+
   Future<void> deleteAllData() async {
     final token = await _secureStorage.token();
     if (token != null) {
@@ -602,8 +832,66 @@ class LifeLensStore extends ChangeNotifier {
       spending: todaySpending,
       sleepHours: health.sleepHours,
       screenTimeHours: health.screenTimeHours,
+      totalWorkload: totalWorkload,
     );
     scoreHistory = await database.scoreHistory(user.userId, 7);
+  }
+
+  List<String> get predictionExplanations {
+    final today = DateTime.now();
+    final previous = scoreHistory
+        .where(
+          (snapshot) =>
+              snapshot.date.year != today.year ||
+              snapshot.date.month != today.month ||
+              snapshot.date.day != today.day,
+        )
+        .lastOrNull;
+    final explanations = <String>[];
+    if (previous != null) {
+      final sleepChange = health.sleepHours - previous.sleepHours;
+      if (sleepChange <= -0.25) {
+        explanations.add(
+          'Sleep decreased by ${sleepChange.abs().toStringAsFixed(1)}h since your previous recorded day.',
+        );
+      }
+      final workloadChange = totalWorkload - previous.totalWorkload;
+      if (workloadChange >= 1) {
+        explanations.add(
+          'Planned workload increased by $workloadChange point${workloadChange == 1 ? '' : 's'}.',
+        );
+      }
+      final screenChange = health.screenTimeHours - previous.screenTimeHours;
+      if (screenChange >= 0.25) {
+        explanations.add(
+          'Screen time increased by ${screenChange.toStringAsFixed(1)}h.',
+        );
+      }
+    }
+    if (highPriorityTasks > 0) {
+      explanations.add(
+        '$highPriorityTasks high-priority task${highPriorityTasks == 1 ? ' is' : 's are'} still due today.',
+      );
+    }
+    final checkIn = checkIns
+        .where(
+          (x) =>
+              x.date.year == today.year &&
+              x.date.month == today.month &&
+              x.date.day == today.day,
+        )
+        .lastOrNull;
+    if (checkIn != null && checkIn.stress >= 4) {
+      explanations.add(
+        'Your check-in reported elevated stress (${checkIn.stress}/5).',
+      );
+    }
+    if (explanations.isEmpty) {
+      explanations.add(
+        'No major negative change was detected from your available history.',
+      );
+    }
+    return explanations.take(3).toList();
   }
 
   Future<void> _persistDailyEntry() async {
@@ -704,11 +992,23 @@ class LifeLensStore extends ChangeNotifier {
 
     final financialHealth = (100 - spendingPenalty).round().clamp(0, 100);
 
+    final todayCheckIn = checkIns.where((checkIn) {
+      final now = DateTime.now();
+      return checkIn.date.year == now.year &&
+          checkIn.date.month == now.month &&
+          checkIn.date.day == now.day;
+    }).firstOrNull;
+    final checkInRiskAdjustment = todayCheckIn == null
+        ? 0
+        : (todayCheckIn.stress - 3) * 7 +
+              (3 - todayCheckIn.energy) * 4 +
+              (3 - todayCheckIn.mood) * 3;
     final stressRisk =
         ((100 - sleepScore) * .35 +
                 health.screenTimeHours * 5 +
                 highPriorityTasks * 10 +
-                totalWorkload * 2)
+                totalWorkload * 2 +
+                checkInRiskAdjustment)
             .round()
             .clamp(0, 100);
 

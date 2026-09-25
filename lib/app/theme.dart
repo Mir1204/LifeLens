@@ -16,8 +16,7 @@ ThemeData _build(Brightness brightness) {
     seedColor: _seed,
     brightness: brightness,
     surface: isDark ? _cardDark : Colors.white,
-    surfaceContainerLowest:
-        isDark ? _scaffoldDark : _scaffoldLight,
+    surfaceContainerLowest: isDark ? _scaffoldDark : _scaffoldLight,
   );
 
   final baseText = GoogleFonts.interTextTheme(
@@ -28,8 +27,7 @@ ThemeData _build(Brightness brightness) {
     useMaterial3: true,
     colorScheme: cs,
     brightness: brightness,
-    scaffoldBackgroundColor:
-        isDark ? _scaffoldDark : _scaffoldLight,
+    scaffoldBackgroundColor: isDark ? _scaffoldDark : _scaffoldLight,
     textTheme: baseText,
     primaryTextTheme: baseText,
 
@@ -37,8 +35,7 @@ ThemeData _build(Brightness brightness) {
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
-      backgroundColor:
-          isDark ? _scaffoldDark : _scaffoldLight,
+      backgroundColor: isDark ? _scaffoldDark : _scaffoldLight,
       foregroundColor: cs.onSurface,
       titleTextStyle: GoogleFonts.inter(
         fontSize: 20,
@@ -64,8 +61,7 @@ ThemeData _build(Brightness brightness) {
 
     // ── Navigation bar ────────────────────────────────────────────────────
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor:
-          isDark ? _cardDark : Colors.white,
+      backgroundColor: isDark ? _cardDark : Colors.white,
       indicatorColor: _seed.withValues(alpha: .15),
       labelTextStyle: WidgetStateProperty.all(
         GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
@@ -75,13 +71,8 @@ ThemeData _build(Brightness brightness) {
     // ── Inputs ────────────────────────────────────────────────────────────
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isDark
-          ? Colors.white.withValues(alpha: .05)
-          : Colors.white,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 14,
-      ),
+      fillColor: isDark ? Colors.white.withValues(alpha: .05) : Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
@@ -116,34 +107,21 @@ ThemeData _build(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        textStyle: GoogleFonts.inter(
-          fontWeight: FontWeight.w700,
-          fontSize: 15,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         side: const BorderSide(color: _seed),
-        textStyle: GoogleFonts.inter(
-          fontWeight: FontWeight.w600,
-          fontSize: 15,
-        ),
+        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        textStyle: GoogleFonts.inter(
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
-        ),
+        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
       ),
     ),
 

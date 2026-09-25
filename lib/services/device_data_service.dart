@@ -61,14 +61,13 @@ class DeviceDataService {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
     final usage = await UsageStats.queryUsageStats(start, now);
-    final filtered = usage
-        .where((item) => (item.totalTimeInForegroundMs ?? 0) > 0)
-        .toList()
-      ..sort(
-        (a, b) => (b.totalTimeInForegroundMs ?? 0).compareTo(
-          a.totalTimeInForegroundMs ?? 0,
-        ),
-      );
+    final filtered =
+        usage.where((item) => (item.totalTimeInForegroundMs ?? 0) > 0).toList()
+          ..sort(
+            (a, b) => (b.totalTimeInForegroundMs ?? 0).compareTo(
+              a.totalTimeInForegroundMs ?? 0,
+            ),
+          );
 
     final totalSeconds = filtered.fold<int>(
       0,

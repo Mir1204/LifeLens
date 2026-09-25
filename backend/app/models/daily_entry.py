@@ -1,7 +1,7 @@
 # Path: app/models/daily_entry.py
 from datetime import datetime, date
 
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Boolean, UniqueConstraint
 
 from app.database import Base
 
@@ -46,3 +46,17 @@ class BackendUser(Base):
     google_subject = Column(String, nullable=True, unique=True, index=True)
     display_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RefreshSession(Base):
+    """Server-side refresh-token allow-list. A token can be revoked immediately."""
+
+    __tablename__ = "refresh_sessions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    token_id = Column(String, nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    revoked = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)

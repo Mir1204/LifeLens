@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../../app/lifelens_app.dart';
 import '../../models/app_user.dart';
 import '../../services/lifelens_store.dart';
+import '../../services/data_portability_service.dart';
+import '../../services/device_data_service.dart';
+import '../../services/notification_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({
@@ -29,13 +32,25 @@ class ProfileScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Profile',
+          'Settings',
           style: Theme.of(
             context,
           ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
+        const SizedBox(height: 3),
+        Text(
+          'Your account, privacy, devices, and app preferences',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: .65),
+          ),
+        ),
         const SizedBox(height: 12),
         Card(
+          color: Theme.of(
+            context,
+          ).colorScheme.primaryContainer.withValues(alpha: .42),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -80,9 +95,23 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        const _SettingsSectionLabel(label: 'Account & data'),
+        const SizedBox(height: 8),
         _FinanceProfileCard(store: store),
         const SizedBox(height: 12),
         _PrivacyCard(store: store),
+        const SizedBox(height: 12),
+        _DataPortabilityCard(store: store),
+        const SizedBox(height: 12),
+        const _SettingsSectionLabel(label: 'Connected services'),
+        const SizedBox(height: 8),
+        _PermissionCenterCard(store: store),
+        const SizedBox(height: 12),
+        const _GettingStartedCard(),
+        const SizedBox(height: 12),
+        const _SettingsSectionLabel(label: 'App preferences'),
+        const SizedBox(height: 8),
+        _SyncQueueCard(store: store),
         const SizedBox(height: 12),
         const _AppearanceCard(),
         const SizedBox(height: 12),
@@ -224,6 +253,302 @@ class ProfileScreen extends StatelessWidget {
           ),
         );
       }
+    }
+  }
+}
+
+class _SettingsSectionLabel extends StatelessWidget {
+  const _SettingsSectionLabel({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(left: 4),
+    child: Text(
+      label.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
+}
+
+class _GettingStartedCard extends StatelessWidget {
+  const _GettingStartedCard();
+  @override
+  Widget build(BuildContext context) => Card(
+    child: ExpansionTile(
+      leading: const Icon(Icons.tips_and_updates_outlined),
+      title: const Text(
+        'Getting started',
+        style: TextStyle(fontWeight: FontWeight.w800),
+      ),
+      subtitle: const Text(
+        'Permissions are requested only when you use a feature',
+      ),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      children: const [
+        Text(
+          '1. Add sleep, steps, and screen-time data in Trends.\n\n2. Enable notifications only if you want reminders.\n\n3. Allow usage access only for screen-time insights.\n\n4. Connect Google Calendar only when adding a task event.',
+        ),
+      ],
+    ),
+  );
+}
+
+class _PermissionCenterCard extends StatelessWidget {
+  const _PermissionCenterCard({required this.store});
+  final LifeLensStore store;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Device permissions',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Enable only the integrations you want. Journal notes remain local.',
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.health_and_safety_outlined),
+            title: const Text('Health Connect'),
+            subtitle: Text(
+              store.health.source.contains('health')
+                  ? 'Connected'
+                  : 'Not read yet',
+            ),
+            trailing: Icon(Icons.chevron_right),
+            onTap: () => _health(context),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.phone_android),
+            title: const Text('Usage access'),
+            subtitle: Text(
+              store.appUsage == null
+                  ? 'Not granted or not read'
+                  : 'Last usage read',
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'Open usage access settings',
+              onPressed: DeviceDataService().openUsageAccessSettings,
+            ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('Notifications'),
+            subtitle: const Text('Required for task and wellness reminders'),
+            trailing: OutlinedButton(
+              onPressed: NotificationService.requestPermission,
+              child: const Text('Enable'),
+            ),
+          ),
+          const ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.calendar_month_outlined),
+            title: Text('Google Calendar'),
+            subtitle: Text(
+              'Permission is requested when you add a task to Calendar',
+            ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.sync),
+            title: const Text('Background sync'),
+            subtitle: Text(
+              store.backgroundSyncScheduledAt == null
+                  ? 'Not scheduled yet'
+                  : 'Scheduled by Android',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+  Future<void> _health(BuildContext context) async {
+    try {
+      await store.updateHealth(
+        await DeviceDataService().readHealthConnect(fallback: store.health),
+      );
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Health Connect updated.')),
+        );
+    } catch (_) {
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Health Connect needs permission or supported data.'),
+          ),
+        );
+    }
+  }
+}
+
+class _SyncQueueCard extends StatelessWidget {
+  const _SyncQueueCard({required this.store});
+  final LifeLensStore store;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: ListTile(
+      leading: const Icon(Icons.cloud_upload_outlined),
+      title: const Text('Offline sync queue'),
+      subtitle: Text(
+        '${store.pendingSyncItems.length} pending change${store.pendingSyncItems.length == 1 ? '' : 's'}',
+      ),
+      trailing: OutlinedButton(
+        onPressed: store.pendingSyncItems.isEmpty
+            ? null
+            : store.retryPendingSync,
+        child: const Text('Retry'),
+      ),
+    ),
+  );
+}
+
+class _DataPortabilityCard extends StatelessWidget {
+  const _DataPortabilityCard({required this.store});
+  final LifeLensStore store;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your data',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Exports are encrypted with your passphrase (AES-256-GCM). Keep that passphrase safe; it cannot be recovered.',
+          ),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _export(context),
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Export'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _import(context),
+                icon: const Icon(Icons.file_download_outlined),
+                label: const Text('Import'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+  Future<void> _export(BuildContext context) async {
+    final passphrase = await _askPassphrase(context, title: 'Encrypt export');
+    if (passphrase == null) return;
+    try {
+      await DataPortabilityService().shareExport(store, passphrase);
+    } on FormatException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
+  Future<String?> _askPassphrase(
+    BuildContext context, {
+    required String title,
+  }) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Passphrase (12+ characters)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value;
+  }
+
+  Future<void> _import(BuildContext context) async {
+    final controller = TextEditingController();
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import LifeLens JSON'),
+        content: TextField(
+          controller: controller,
+          maxLines: 8,
+          decoration: const InputDecoration(hintText: 'Paste an export here'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (raw == null || raw.trim().isEmpty) return;
+    final passphrase = await _askPassphrase(context, title: 'Decrypt import');
+    if (passphrase == null) return;
+    try {
+      await DataPortabilityService().importCheckInsAndGoals(
+        store,
+        raw,
+        passphrase,
+      );
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Goals and check-ins imported.')),
+        );
+    } catch (_) {
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Import failed. Check the encrypted export and passphrase.',
+            ),
+          ),
+        );
     }
   }
 }

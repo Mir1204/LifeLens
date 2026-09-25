@@ -15,28 +15,22 @@ class PlannerScreen extends StatefulWidget {
 class _PlannerScreenState extends State<PlannerScreen> {
   final _formKey = GlobalKey<FormState>();
   final titleController = TextEditingController();
+  final noteController = TextEditingController();
   TaskPriority priority = TaskPriority.medium;
-  double workload = 2;
   DateTime taskDate = DateTime.now();
   TimeOfDay taskTime = const TimeOfDay(hour: 9, minute: 0);
   bool addToGoogleCalendar = false;
+  int? reminderMinutes = 15;
+  String taskFilter = 'Today';
+  String sortBy = 'Date';
+  String query = '';
 
   @override
   void dispose() {
     titleController.dispose();
+    noteController.dispose();
     super.dispose();
   }
-
-  static const _workloadLabels = [
-    'Light',
-    'Moderate',
-    'Heavy',
-    'Intense',
-    'Extreme',
-  ];
-
-  String get _workloadLabel =>
-      _workloadLabels[(workload.round() - 1).clamp(0, 4)];
 
   @override
   Widget build(BuildContext context) {
@@ -54,17 +48,54 @@ class _PlannerScreenState extends State<PlannerScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              Text(
+                'Tasks',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    'Tasks',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+                  Expanded(
+                    child: TextField(
+                      onChanged: (value) =>
+                          setState(() => query = value.toLowerCase()),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        prefixIcon: Icon(Icons.search, size: 20),
+                        hintText: 'Search tasks',
+                      ),
                     ),
                   ),
-                  _PlannerConnectivityBadge(isOnline: widget.store.isOnline),
+                  const SizedBox(width: 10),
+                  PopupMenuButton<String>(
+                    tooltip: 'Show tasks',
+                    icon: const Icon(Icons.filter_list),
+                    onSelected: (value) => setState(() => taskFilter = value),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'Today', child: Text('Today')),
+                      PopupMenuItem(value: 'Upcoming', child: Text('Upcoming')),
+                      PopupMenuItem(
+                        value: 'Completed',
+                        child: Text('Completed'),
+                      ),
+                      PopupMenuItem(value: 'All', child: Text('All tasks')),
+                    ],
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Sort tasks',
+                    icon: const Icon(Icons.sort),
+                    onSelected: (value) => setState(() => sortBy = value),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'Date', child: Text('Sort by date')),
+                      PopupMenuItem(
+                        value: 'Priority',
+                        child: Text('Sort by priority'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -93,6 +124,15 @@ class _PlannerScreenState extends State<PlannerScreen> {
                             return null;
                           },
                         ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: noteController,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Notes (optional)',
+                            prefixIcon: Icon(Icons.notes_outlined),
+                          ),
+                        ),
                         const SizedBox(height: 12),
                         SegmentedButton<TaskPriority>(
                           segments: const [
@@ -117,46 +157,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
                             setState(() => priority = value.first);
                           },
                         ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            const Text('Workload: '),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF256D85,
-                                ).withValues(alpha: .12),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFF256D85,
-                                  ).withValues(alpha: .3),
-                                ),
-                              ),
-                              child: Text(
-                                _workloadLabel,
-                                style: const TextStyle(
-                                  color: Color(0xFF256D85),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        Slider(
-                          value: workload,
-                          min: 1,
-                          max: 5,
-                          divisions: 4,
-                          label: _workloadLabel,
-                          onChanged: (value) =>
-                              setState(() => workload = value),
-                        ),
+                        const SizedBox(height: 12),
                         OutlinedButton.icon(
                           onPressed: _pickTaskDate,
                           icon: const Icon(Icons.calendar_today_outlined),
@@ -166,6 +167,43 @@ class _PlannerScreenState extends State<PlannerScreen> {
                           onPressed: _pickTaskTime,
                           icon: const Icon(Icons.schedule),
                           label: Text('Time ${taskTime.format(context)}'),
+                        ),
+                        DropdownButtonFormField<int?>(
+                          initialValue: reminderMinutes,
+                          isExpanded: true,
+                          isDense: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Task reminder',
+                            prefixIcon: Icon(Icons.notifications_outlined),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 14,
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: null,
+                              child: Text('No reminder'),
+                            ),
+                            DropdownMenuItem(
+                              value: 10,
+                              child: Text('10 minutes before'),
+                            ),
+                            DropdownMenuItem(
+                              value: 15,
+                              child: Text('15 minutes before'),
+                            ),
+                            DropdownMenuItem(
+                              value: 30,
+                              child: Text('30 minutes before'),
+                            ),
+                            DropdownMenuItem(
+                              value: 60,
+                              child: Text('1 hour before'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => reminderMinutes = value),
                         ),
                         SwitchListTile.adaptive(
                           contentPadding: EdgeInsets.zero,
@@ -194,7 +232,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
               const SizedBox(height: 12),
 
               // ── Task list ─────────────────────────────────────────────────
-              if (widget.store.tasks.isEmpty)
+              if (_visibleTasks.isEmpty)
                 const _EmptyTasks()
               else ...[
                 Padding(
@@ -208,7 +246,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
                     ),
                   ),
                 ),
-                for (final task in widget.store.tasks)
+                for (final task in _visibleTasks)
                   Dismissible(
                     key: ValueKey(task.id ?? task.hashCode),
                     direction: DismissDirection.endToStart,
@@ -267,7 +305,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          'Workload ${task.workload}/5 • ${_formatTaskTime(task.timeMinutes)}',
+                          '${_formatTaskTime(task.timeMinutes)}${task.note.isEmpty ? '' : ' • ${task.note}'}',
                         ),
                         trailing: _PriorityChip(priority: task.priority),
                       ),
@@ -281,6 +319,30 @@ class _PlannerScreenState extends State<PlannerScreen> {
     );
   }
 
+  List<PlannerEntry> get _visibleTasks {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final items = widget.store.tasks.where((task) {
+      final day = DateTime(task.date.year, task.date.month, task.date.day);
+      final filterOk = switch (taskFilter) {
+        'Today' => day == today && !task.isCompleted,
+        'Upcoming' => day.isAfter(today) && !task.isCompleted,
+        'Completed' => task.isCompleted,
+        _ => true,
+      };
+      return filterOk &&
+          (query.isEmpty ||
+              task.title.toLowerCase().contains(query) ||
+              task.note.toLowerCase().contains(query));
+    }).toList();
+    items.sort(
+      (a, b) => sortBy == 'Priority'
+          ? b.priority.index.compareTo(a.priority.index)
+          : a.date.compareTo(b.date),
+    );
+    return items;
+  }
+
   Future<void> _saveTask() async {
     if (!_formKey.currentState!.validate()) return;
     final title = titleController.text.trim();
@@ -290,8 +352,10 @@ class _PlannerScreenState extends State<PlannerScreen> {
           title: title,
           date: taskDate,
           priority: priority,
-          workload: workload.round(),
+          workload: _workloadForPriority(priority),
           timeMinutes: taskTime.hour * 60 + taskTime.minute,
+          note: noteController.text.trim(),
+          reminderMinutes: reminderMinutes,
         ),
         addToGoogleCalendar: addToGoogleCalendar,
       );
@@ -309,6 +373,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
       return;
     }
     titleController.clear();
+    noteController.clear();
     FocusScope.of(context).unfocus();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -344,13 +409,14 @@ class _PlannerScreenState extends State<PlannerScreen> {
 
   Future<void> _editTask(PlannerEntry task) async {
     final controller = TextEditingController(text: task.title);
+    final notesController = TextEditingController(text: task.note);
     var date = task.date;
     var time = TimeOfDay(
       hour: task.timeMinutes ~/ 60,
       minute: task.timeMinutes % 60,
     );
     var selectedPriority = task.priority;
-    var selectedWorkload = task.workload.toDouble();
+    int? selectedReminder = task.reminderMinutes;
     final updated = await showDialog<PlannerEntry>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -363,6 +429,13 @@ class _PlannerScreenState extends State<PlannerScreen> {
                 TextField(
                   controller: controller,
                   decoration: const InputDecoration(labelText: 'Task'),
+                ),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
                 ),
                 DropdownButton<TaskPriority>(
                   value: selectedPriority,
@@ -377,15 +450,6 @@ class _PlannerScreenState extends State<PlannerScreen> {
                       .toList(),
                   onChanged: (value) =>
                       setDialogState(() => selectedPriority = value!),
-                ),
-                Slider(
-                  value: selectedWorkload,
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  label: selectedWorkload.round().toString(),
-                  onChanged: (value) =>
-                      setDialogState(() => selectedWorkload = value),
                 ),
                 TextButton(
                   onPressed: () async {
@@ -411,6 +475,40 @@ class _PlannerScreenState extends State<PlannerScreen> {
                   },
                   child: Text(time.format(context)),
                 ),
+                DropdownButtonFormField<int?>(
+                  initialValue: selectedReminder,
+                  isExpanded: true,
+                  isDense: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Task reminder',
+                    prefixIcon: Icon(Icons.notifications_outlined),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 14,
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('No reminder'),
+                    ),
+                    DropdownMenuItem(
+                      value: 10,
+                      child: Text('10 minutes before'),
+                    ),
+                    DropdownMenuItem(
+                      value: 15,
+                      child: Text('15 minutes before'),
+                    ),
+                    DropdownMenuItem(
+                      value: 30,
+                      child: Text('30 minutes before'),
+                    ),
+                    DropdownMenuItem(value: 60, child: Text('1 hour before')),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => selectedReminder = value),
+                ),
               ],
             ),
           ),
@@ -426,8 +524,11 @@ class _PlannerScreenState extends State<PlannerScreen> {
                   title: controller.text.trim(),
                   date: date,
                   priority: selectedPriority,
-                  workload: selectedWorkload.round(),
+                  workload: _workloadForPriority(selectedPriority),
                   timeMinutes: time.hour * 60 + time.minute,
+                  note: notesController.text.trim(),
+                  reminderMinutes: selectedReminder,
+                  clearReminder: selectedReminder == null,
                 ),
               ),
               child: const Text('Save'),
@@ -437,12 +538,19 @@ class _PlannerScreenState extends State<PlannerScreen> {
       ),
     );
     controller.dispose();
+    notesController.dispose();
     if (updated != null && updated.title.isNotEmpty)
       await widget.store.updateTask(updated);
   }
 
   String _formatDate(DateTime value) =>
       '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+
+  int _workloadForPriority(TaskPriority value) => switch (value) {
+    TaskPriority.low => 1,
+    TaskPriority.medium => 3,
+    TaskPriority.high => 5,
+  };
 
   Future<void> _deleteTask(PlannerEntry task) async {
     await widget.store.deleteTask(task);
@@ -516,53 +624,6 @@ class _EmptyTasks extends StatelessWidget {
               'Add tasks to estimate workload and burnout risk.',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Planner Connectivity Badge ─────────────────────────────────────────────────
-
-class _PlannerConnectivityBadge extends StatelessWidget {
-  const _PlannerConnectivityBadge({required this.isOnline});
-
-  final bool isOnline;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isOnline ? const Color(0xFF287D5A) : const Color(0xFFC8553D);
-    final label = isOnline ? 'Online' : 'Offline';
-    final icon = isOnline ? Icons.wifi : Icons.wifi_off;
-
-    return Tooltip(
-      message: isOnline
-          ? 'Connected – syncing with backend'
-          : 'Working offline – data will sync when connection returns',
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: .15),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: .4), width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: color),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: color,
-                letterSpacing: 0.3,
-              ),
             ),
           ],
         ),

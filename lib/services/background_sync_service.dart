@@ -1,9 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../models/lifestyle_entry.dart';
+import '../models/lifestyle_scores.dart';
 import 'device_data_service.dart';
 import 'local_database_service.dart';
 import 'notification_service.dart';
@@ -124,22 +127,36 @@ class BackgroundSyncService {
         );
         return true;
       }
-      final token = await SecureStorageService().token();
+      final secureStorage = SecureStorageService();
+      var token = await secureStorage.token();
       if (token == null) return true;
       final backendUrl =
           await database.setting('backend_url') ??
           'https://lifelens-backend-xh56.onrender.com';
-      final scores = await PredictionApiService(baseUrl: backendUrl).predict(
-        PredictionPayload(
-          health: health,
-          dailySpending: spending,
-          calendarEvents: dayTasks.length,
-          highPriorityTasks: highPriority,
-          totalWorkload: workload,
-          monthlyBudget: user.monthlyBudget,
-        ),
-        accessToken: token,
+      final api = PredictionApiService(baseUrl: backendUrl);
+      final payload = PredictionPayload(
+        health: health,
+        dailySpending: spending,
+        calendarEvents: dayTasks.length,
+        highPriorityTasks: highPriority,
+        totalWorkload: workload,
+        monthlyBudget: user.monthlyBudget,
       );
+      LifestyleScores scores;
+      try {
+        scores = await api.predict(payload, accessToken: token);
+      } on HttpException catch (error) {
+        if (!error.message.contains('401')) rethrow;
+        final refresh = await secureStorage.refreshToken();
+        if (refresh == null) rethrow;
+        final renewed =
+            jsonDecode(await api.refreshAccessToken(refreshToken: refresh))
+                as Map<String, dynamic>;
+        token = renewed['access'] as String;
+        await secureStorage.saveToken(token);
+        await secureStorage.saveRefreshToken(renewed['refresh'] as String);
+        scores = await api.predict(payload, accessToken: token);
+      }
       await NotificationService.initialize(requestPermission: false);
       await NotificationService().showRiskAlerts(
         scores: scores,

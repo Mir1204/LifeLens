@@ -9,12 +9,13 @@ import '../models/app_usage_summary.dart';
 import '../models/app_user.dart';
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
+import '../models/wellbeing_models.dart';
 import 'secure_storage_service.dart';
 
 class LocalDatabaseService {
   static const databaseName = 'lifelens_secure.db';
   static const _legacyDatabaseName = 'lifelens.db';
-  static const databaseVersion = 7;
+  static const databaseVersion = 9;
 
   Database? _database;
   final SecureStorageService _secureStorage = SecureStorageService();
@@ -168,6 +169,23 @@ class LocalDatabaseService {
         'ALTER TABLE planner_tasks ADD COLUMN time_minutes INTEGER NOT NULL DEFAULT 540',
       );
     }
+    if (oldVersion < 8) {
+      await _createWellbeingTables(db);
+      await _tryExecute(
+        db,
+        'ALTER TABLE planner_tasks ADD COLUMN note TEXT NOT NULL DEFAULT \'\'',
+      );
+      await _tryExecute(
+        db,
+        'ALTER TABLE planner_tasks ADD COLUMN reminder_minutes INTEGER',
+      );
+    }
+    if (oldVersion < 9) {
+      await _tryExecute(
+        db,
+        'ALTER TABLE score_snapshots ADD COLUMN total_workload INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   Future<void> _tryExecute(Database db, String sql) async {
@@ -204,8 +222,6 @@ class LocalDatabaseService {
         created_at TEXT NOT NULL,
         updated_at TEXT,
         deleted_at TEXT,
-        google_calendar_event_id TEXT,
-        time_minutes INTEGER NOT NULL DEFAULT 540,
         FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
       )
     ''');
@@ -222,6 +238,10 @@ class LocalDatabaseService {
         created_at TEXT NOT NULL,
         updated_at TEXT,
         deleted_at TEXT,
+        google_calendar_event_id TEXT,
+        time_minutes INTEGER NOT NULL DEFAULT 540,
+        note TEXT NOT NULL DEFAULT '',
+        reminder_minutes INTEGER,
         FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
       )
     ''');
@@ -267,6 +287,7 @@ class LocalDatabaseService {
         spending REAL NOT NULL,
         sleep_hours REAL NOT NULL,
         screen_time_hours REAL NOT NULL,
+        total_workload INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
       )
@@ -274,6 +295,7 @@ class LocalDatabaseService {
 
     await _createDailyEntries(db);
     await _createRecommendations(db);
+    await _createWellbeingTables(db);
 
     await db.execute('''
       CREATE TABLE app_settings (
@@ -359,6 +381,18 @@ class LocalDatabaseService {
         category TEXT NOT NULL,
         severity TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  Future<void> _createWellbeingTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS daily_checkins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
+        checkin_date TEXT NOT NULL, mood INTEGER NOT NULL, energy INTEGER NOT NULL,
+        stress INTEGER NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL,
+        UNIQUE(user_id, checkin_date),
         FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
       )
     ''');
@@ -542,6 +576,8 @@ class LocalDatabaseService {
       'is_completed': 0,
       'google_calendar_event_id': entry.googleCalendarEventId,
       'time_minutes': entry.timeMinutes,
+      'note': entry.note,
+      'reminder_minutes': entry.reminderMinutes,
       'created_at': DateTime.now().toIso8601String(),
     });
   }
@@ -562,14 +598,96 @@ class LocalDatabaseService {
   Future<void> updateTask(PlannerEntry entry) async {
     if (entry.id == null) return;
     final db = await database;
-    await db.update('planner_tasks', {
-      'title': entry.title,
-      'priority': entry.priority.name,
-      'workload': entry.workload,
-      'task_date': _dayKey(entry.date),
-      'time_minutes': entry.timeMinutes,
-      'updated_at': DateTime.now().toIso8601String(),
-    }, where: 'id = ?', whereArgs: [entry.id]);
+    await db.update(
+      'planner_tasks',
+      {
+        'title': entry.title,
+        'priority': entry.priority.name,
+        'workload': entry.workload,
+        'task_date': _dayKey(entry.date),
+        'time_minutes': entry.timeMinutes,
+        'note': entry.note,
+        'reminder_minutes': entry.reminderMinutes,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [entry.id],
+    );
+  }
+
+  Future<void> saveCheckIn(String userId, DailyCheckIn checkIn) async {
+    final db = await database;
+    await db.insert('daily_checkins', {
+      'user_id': userId,
+      'checkin_date': _dayKey(checkIn.date),
+      'mood': checkIn.mood,
+      'energy': checkIn.energy,
+      'stress': checkIn.stress,
+      'note': checkIn.note,
+      'created_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<DailyCheckIn>> checkIns(String userId, {int days = 7}) async {
+    final db = await database;
+    final rows = await db.query(
+      'daily_checkins',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'checkin_date DESC',
+      limit: days,
+    );
+    return rows
+        .map(
+          (row) => DailyCheckIn(
+            date: DateTime.parse(row['checkin_date'] as String),
+            mood: row['mood'] as int,
+            energy: row['energy'] as int,
+            stress: row['stress'] as int,
+            note: row['note'] as String,
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> enqueueSync({
+    required String userId,
+    required String entityType,
+    required String operation,
+    required String payload,
+    int? entityId,
+    String? error,
+  }) async {
+    final db = await database;
+    await db.insert('sync_outbox', {
+      'user_id': userId,
+      'entity_type': entityType,
+      'entity_id': entityId,
+      'operation': operation,
+      'payload_json': payload,
+      'last_error': error,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<List<Map<String, Object?>>> pendingSyncItems(String userId) async {
+    final db = await database;
+    return db.query(
+      'sync_outbox',
+      where: 'user_id = ? AND status = ?',
+      whereArgs: [userId, 'pending'],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<void> markSyncItemDone(int id) async {
+    final db = await database;
+    await db.update(
+      'sync_outbox',
+      {'status': 'done', 'synced_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<List<PlannerEntry>> tasks(String userId) async {
@@ -733,6 +851,7 @@ class LocalDatabaseService {
     required double spending,
     required double sleepHours,
     required double screenTimeHours,
+    required int totalWorkload,
   }) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
@@ -747,6 +866,7 @@ class LocalDatabaseService {
       'spending': spending,
       'sleep_hours': sleepHours,
       'screen_time_hours': screenTimeHours,
+      'total_workload': totalWorkload,
       'created_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
     await replaceRecommendations(userId, scores);
@@ -843,6 +963,8 @@ class LocalDatabaseService {
       isCompleted: (row['is_completed'] as int? ?? 0) == 1,
       googleCalendarEventId: row['google_calendar_event_id'] as String?,
       timeMinutes: row['time_minutes'] as int? ?? 540,
+      note: row['note'] as String? ?? '',
+      reminderMinutes: row['reminder_minutes'] as int?,
     );
   }
 
@@ -876,6 +998,7 @@ class LocalDatabaseService {
       spending: (row['spending'] as num).toDouble(),
       sleepHours: (row['sleep_hours'] as num).toDouble(),
       screenTimeHours: (row['screen_time_hours'] as num).toDouble(),
+      totalWorkload: row['total_workload'] as int? ?? 0,
     );
   }
 

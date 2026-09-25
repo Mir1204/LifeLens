@@ -7,6 +7,8 @@ import '../../services/device_data_service.dart';
 import '../../services/lifelens_store.dart';
 import '../../widgets/trend_chart_card.dart';
 import 'sync_settings_widgets.dart';
+import 'wellbeing_widgets.dart';
+import 'prediction_explanation_card.dart';
 
 class InsightsScreen extends StatefulWidget {
   const InsightsScreen({super.key, required this.store});
@@ -53,7 +55,14 @@ class _InsightsScreenState extends State<InsightsScreen> {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: widget.store,
-      builder: (context, _) => _buildContent(context),
+      builder: (context, _) {
+        try {
+          return _buildContent(context);
+        } catch (error, stackTrace) {
+          debugPrint('LifeLens Trends build failure: $error\n$stackTrace');
+          return _TrendsRecoveryCard(onRetry: () => setState(() {}));
+        }
+      },
     );
   }
 
@@ -138,9 +147,16 @@ class _InsightsScreenState extends State<InsightsScreen> {
               const SizedBox(height: 16),
               _LifestyleAlertCard(scores: scores, health: widget.store.health),
               const SizedBox(height: 16),
+              PredictionExplanationCard(
+                stressRisk: scores.stressRisk,
+                explanations: widget.store.predictionExplanations,
+              ),
+              const SizedBox(height: 16),
               SyncStatusCard(store: widget.store),
               const SizedBox(height: 12),
               NotificationSettingsCard(store: widget.store),
+              const SizedBox(height: 16),
+              WellbeingCards(store: widget.store),
               const SizedBox(height: 16),
               Card(
                 child: ListTile(
@@ -426,6 +442,46 @@ class _InsightsScreenState extends State<InsightsScreen> {
       if (mounted) setState(() => isReadingUsage = false);
     }
   }
+}
+
+class _TrendsRecoveryCard extends StatelessWidget {
+  const _TrendsRecoveryCard({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.insights_outlined, size: 42),
+              const SizedBox(height: 12),
+              Text(
+                'Trends needs a refresh',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your saved data is safe. Try refreshing this screen.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry Trends'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _HealthEmptyState extends StatelessWidget {

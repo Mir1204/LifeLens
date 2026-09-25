@@ -142,4 +142,17 @@ class PredictionApiService {
       client.close(force: true);
     }
   }
+
+  Future<void> revokeRefreshSession({required String refreshToken}) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final request = await client.postUrl(Uri.parse('$baseUrl/auth/logout'));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'refresh_token': refreshToken}));
+      await request.close().timeout(const Duration(seconds: 20));
+    } finally {
+      client.close(force: true);
+    }
+  }
 }

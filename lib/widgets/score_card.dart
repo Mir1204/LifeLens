@@ -61,7 +61,10 @@ class ScoreCard extends StatelessWidget {
                     builder: (context, currentProgress, child) {
                       final currentValue = (currentProgress * 100).round();
                       return CustomPaint(
-                        painter: _ArcPainter(progress: currentProgress, color: color),
+                        painter: _ArcPainter(
+                          progress: currentProgress,
+                          color: color,
+                        ),
                         child: Center(
                           child: Text(
                             '$currentValue',

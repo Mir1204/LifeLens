@@ -1,4 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../models/lifestyle_entry.dart';
 import '../models/lifestyle_scores.dart';
@@ -8,6 +12,9 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize({bool requestPermission = true}) async {
+    tz.initializeTimeZones();
+    final zone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(zone.identifier));
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
     await _plugin.initialize(settings);
@@ -20,6 +27,66 @@ class NotificationService {
           >()
           ?.requestNotificationsPermission();
     }
+  }
+
+  Future<void> scheduleTaskReminder({
+    required int id,
+    required DateTime when,
+    required String title,
+  }) async {
+    if (!when.isAfter(DateTime.now())) return;
+    await _plugin.zonedSchedule(
+      10000 + id,
+      'Task reminder',
+      title,
+      tz.TZDateTime.from(when, tz.local),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'lifelens_reminders',
+          'LifeLens reminders',
+          channelDescription: 'Task and lifestyle reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+  }
+
+  Future<void> cancelTaskReminder(int id) => _plugin.cancel(10000 + id);
+
+  Future<void> scheduleDailyRoutine({
+    required int id,
+    required TimeOfDay time,
+    required String title,
+    required String body,
+  }) async {
+    final now = tz.TZDateTime.now(tz.local);
+    var when = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      time.hour,
+      time.minute,
+    );
+    if (!when.isAfter(now)) when = when.add(const Duration(days: 1));
+    await _plugin.zonedSchedule(
+      20000 + id,
+      title,
+      body,
+      when,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'lifelens_routines',
+          'LifeLens routines',
+          channelDescription: 'Healthy routine reminders',
+          importance: Importance.defaultImportance,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
   }
 
   static Future<bool> requestPermission() async {

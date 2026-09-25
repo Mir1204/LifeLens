@@ -41,6 +41,7 @@ class ScoreSnapshot {
     required this.spending,
     required this.sleepHours,
     required this.screenTimeHours,
+    required this.totalWorkload,
   });
 
   final DateTime date;
@@ -50,4 +51,5 @@ class ScoreSnapshot {
   final double spending;
   final double sleepHours;
   final double screenTimeHours;
+  final int totalWorkload;
 }

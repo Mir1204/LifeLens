@@ -20,13 +20,15 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   String category = 'Food';
   String recurringLabel = 'None';
 
-  static const _categories = ['Food', 'Travel', 'Study', 'Shopping', 'Other'];
+  static const _addCategoryOption = '+ Add category';
+  static const _addRecurringOption = '+ Add recurring label';
+  static const _categories = ['Food', 'Travel', 'Study', 'Shopping'];
   static const _recurringLabelsByCategory = {
     'Food': ['None', 'Groceries', 'Mess', 'Coffee', 'Snacks'],
     'Travel': ['None', 'Travel pass', 'Fuel', 'Cab', 'Bus/Metro'],
     'Study': ['None', 'Tuition', 'Books', 'Course', 'Exam fee'],
     'Shopping': ['None', 'Clothes', 'Accessories', 'Electronics'],
-    'Other': ['None', 'Rent', 'Subscription', 'Bills', 'Medicine', 'EMI'],
+    'General': ['None', 'Rent', 'Subscription', 'Bills', 'Medicine', 'EMI'],
   };
 
   @override
@@ -72,15 +74,25 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           noteController: noteController,
           category: category,
           recurringLabel: recurringLabel,
-          categories: _categories,
+          categories: [..._categories, ...widget.store.customExpenseCategories],
           recurringLabels: _recurringLabelsFor(category),
           onCategoryChanged: (value) {
+            if (value == _addCategoryOption) {
+              _addCategory();
+              return;
+            }
             setState(() {
               category = value;
               recurringLabel = 'None';
             });
           },
-          onRecurringChanged: (value) => setState(() => recurringLabel = value),
+          onRecurringChanged: (value) {
+            if (value == _addRecurringOption) {
+              _addRecurringLabel();
+              return;
+            }
+            setState(() => recurringLabel = value);
+          },
           onSave: _saveExpense,
         ),
         const SizedBox(height: 12),
@@ -316,7 +328,52 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   }
 
   List<String> _recurringLabelsFor(String category) {
-    return _recurringLabelsByCategory[category] ?? const ['None'];
+    return [
+      ...(_recurringLabelsByCategory[category] ?? const ['None']),
+      ...widget.store.customRecurringLabels,
+    ].toSet().toList();
+  }
+
+  Future<String?> _askForLabel(String title) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result?.trim();
+  }
+
+  Future<void> _addCategory() async {
+    final value = await _askForLabel('Add category');
+    if (value == null || value.isEmpty) return;
+    await widget.store.addCustomExpenseCategory(value);
+    if (mounted) setState(() => category = value);
+  }
+
+  Future<void> _addRecurringLabel() async {
+    final value = await _askForLabel('Add recurring label');
+    if (value == null || value.isEmpty) return;
+    await widget.store.addCustomRecurringLabel(value);
+    if (mounted) setState(() => recurringLabel = value);
   }
 
   Widget _categoryIcon(String cat) {
@@ -394,6 +451,10 @@ class _ExpenseForm extends StatelessWidget {
                 items: [
                   for (final item in categories)
                     DropdownMenuItem(value: item, child: Text(item)),
+                  const DropdownMenuItem(
+                    value: _ExpensesScreenState._addCategoryOption,
+                    child: Text('+ Add category'),
+                  ),
                 ],
                 onChanged: (value) => onCategoryChanged(value!),
               ),
@@ -407,6 +468,10 @@ class _ExpenseForm extends StatelessWidget {
                 items: [
                   for (final item in recurringLabels)
                     DropdownMenuItem(value: item, child: Text(item)),
+                  const DropdownMenuItem(
+                    value: _ExpensesScreenState._addRecurringOption,
+                    child: Text('+ Add recurring label'),
+                  ),
                 ],
                 onChanged: (value) => onRecurringChanged(value!),
               ),
