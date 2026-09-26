@@ -8,6 +8,8 @@ Run: python -m app.ml.training.generate_synthetic_data
 Output: app/ml/data/burnout_data.csv, app/ml/data/overspend_data.csv
 """
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -15,7 +17,7 @@ np.random.seed(42)
 
 NUM_USERS = 150
 DAYS_PER_USER = 21
-OUT_DIR = "app/ml/data"
+OUT_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
 def simulate_user_days(user_id: int) -> pd.DataFrame:
@@ -125,8 +127,8 @@ def main():
     ]
     overspend_cols = ["spending_today", "spending_avg_7d", "spending_trend_7d", "overspending_risk"]
 
-    pd.DataFrame(burnout_rows)[burnout_cols].to_csv(f"{OUT_DIR}/burnout_data.csv", index=False)
-    pd.DataFrame(overspend_rows)[overspend_cols].to_csv(f"{OUT_DIR}/overspend_data.csv", index=False)
+    pd.DataFrame(burnout_rows)[burnout_cols].to_csv(OUT_DIR / "burnout_data.csv", index=False)
+    pd.DataFrame(overspend_rows)[overspend_cols].to_csv(OUT_DIR / "overspend_data.csv", index=False)
 
     print(f"Saved {len(burnout_rows)} rows to burnout_data.csv")
     print(f"Saved {len(overspend_rows)} rows to overspend_data.csv")

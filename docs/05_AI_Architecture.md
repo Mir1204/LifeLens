@@ -12,6 +12,29 @@ The current AI layer focuses on:
 
 The score cards are intentionally rule-based for explainability.
 
+## Pretrained formulas and score calculations
+
+The app's deterministic score formulas are not pretrained model weights. They
+are explicit calculations shared between Flutter's local fallback and the
+backend:
+
+- Productivity:
+  `clamp(0.30 * sleep_score + 0.25 * activity_score + 0.30 * focus_score + 0.15 * (100 - workload_penalty), 0, 100)`
+  where `sleep_score = clamp(sleep_hours / 8 * 100)`,
+  `activity_score = clamp(steps / 8000 * 100)`,
+  `focus_score = clamp(100 - (screen_time_hours - 4) * 10)`, and
+  `workload_penalty = clamp(total_workload * 4, 0, 40)`.
+- Financial health: with a monthly budget,
+  `100 - clamp((daily_spending / (monthly_budget / 30)) * 45, 0, 60)`;
+  without one, `100 - clamp(daily_spending / 20, 0, 45)`.
+- Formula stress fallback:
+  `clamp((100 - sleep_score) * 0.35 + screen_time_hours * 5 + high_priority_tasks * 10 + total_workload * 2, 0, 100)`.
+
+The model-backed predictions use the three checked-in Joblib artifacts and the
+feature lists in `backend/app/services/prediction.py`. The static stress model
+is trained from the checked-in `backend/app/model_data/Sleep_health_and_lifestyle_dataset.csv`;
+the burnout and overspending models use generated synthetic longitudinal data.
+
 ## Current Components
 
 ### Rule-Based Scoring
@@ -66,6 +89,8 @@ The prediction service tries to load trained model artifacts:
 - `app/ml/artifacts/overspend_model.joblib`
 
 If artifacts are missing, it uses fallback formulas so the API keeps working.
+Model paths are resolved relative to the backend package, so starting Uvicorn
+from either the repository root or `backend/` loads the artifacts consistently.
 
 ## Burnout Prediction
 
@@ -108,7 +133,8 @@ backend/app/ml/training/generate_synthetic_data.py
 
 Synthetic data is used because the project does not have long-term real user data during one semester.
 
-Generated datasets:
+Generated datasets (created by the training command and intentionally not
+required at runtime):
 
 - `app/ml/data/burnout_data.csv`
 - `app/ml/data/overspend_data.csv`
@@ -121,10 +147,11 @@ Implemented:
 backend/app/ml/training/train_overspend_model.py
 ```
 
-Empty / pending:
+Also implemented:
 
 ```text
 backend/app/ml/training/train_burnout_model.py
+backend/app/ml/training/train_static_stress_model.py
 ```
 
 ## Model Choice

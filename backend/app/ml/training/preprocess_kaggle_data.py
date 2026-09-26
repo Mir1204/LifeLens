@@ -21,10 +21,13 @@ Run: python -m app.ml.training.preprocess_kaggle_data
 """
 
 import os
+from pathlib import Path
+
 import pandas as pd
 
-RAW_PATH = "app/ml/data/raw/sleep_health_lifestyle.csv"
-OUT_PATH = "app/ml/data/static_stress_data.csv"
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+RAW_PATH = Path(__file__).resolve().parents[2] / "model_data" / "Sleep_health_and_lifestyle_dataset.csv"
+OUT_PATH = DATA_DIR / "static_stress_data.csv"
 
 # ── occupation → proxy workload (1 = very light, 5 = very demanding) ──────────
 OCCUPATION_WORKLOAD = {

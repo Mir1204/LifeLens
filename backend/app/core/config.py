@@ -1,8 +1,12 @@
 # Path: app/core/config.py
 import json
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -19,9 +23,9 @@ class Settings(BaseSettings):
     # Google sign-in is optional. Keeping this optional lets the API start for
     # password-based users when the Google OAuth client has not been configured.
     google_web_client_id: str = ""
-    burnout_model_path: str = "app/ml/artifacts/burnout_model.joblib"
-    overspend_model_path: str = "app/ml/artifacts/overspend_model.joblib"
-    static_stress_model_path: str = "app/ml/artifacts/static_stress_model.joblib"
+    burnout_model_path: str = str(BACKEND_DIR / "app" / "ml" / "artifacts" / "burnout_model.joblib")
+    overspend_model_path: str = str(BACKEND_DIR / "app" / "ml" / "artifacts" / "overspend_model.joblib")
+    static_stress_model_path: str = str(BACKEND_DIR / "app" / "ml" / "artifacts" / "static_stress_model.joblib")
 
     @field_validator("database_url")
     @classmethod

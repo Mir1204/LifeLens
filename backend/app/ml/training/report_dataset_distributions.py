@@ -19,7 +19,7 @@ from app.ml.training.training_utils import balance_classes
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
-RAW_DATA_PATH = DATA_DIR / "raw" / "sleep_health_lifestyle.csv"
+RAW_DATA_PATH = BASE_DIR.parent / "model_data" / "Sleep_health_and_lifestyle_dataset.csv"
 STATIC_DATA_PATH = DATA_DIR / "static_stress_data.csv"
 BURNOUT_DATA_PATH = DATA_DIR / "burnout_data.csv"
 OVERSPEND_DATA_PATH = DATA_DIR / "overspend_data.csv"
@@ -61,7 +61,7 @@ def main() -> None:
     print_distribution(OVERSPEND_DATA_PATH, "overspending_risk")
     print_balanced_distribution(OVERSPEND_DATA_PATH, "overspending_risk")
 
-    print("Raw dataset usage note")
+    print("Source dataset usage note")
     if RAW_DATA_PATH.exists():
         print(f"  raw file found: {RAW_DATA_PATH.name}")
     else:

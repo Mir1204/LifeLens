@@ -7,6 +7,8 @@ Run: python -m app.ml.training.train_overspend_model
 Output: app/ml/artifacts/overspend_model.joblib
 """
 import os
+from pathlib import Path
+
 import joblib
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -15,8 +17,8 @@ from sklearn.metrics import accuracy_score, classification_report
 
 from app.ml.training.training_utils import balance_classes
 
-DATA_PATH = "app/ml/data/overspend_data.csv"
-ARTIFACT_PATH = "app/ml/artifacts/overspend_model.joblib"
+DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "overspend_data.csv"
+ARTIFACT_PATH = Path(__file__).resolve().parents[1] / "artifacts" / "overspend_model.joblib"
 
 FEATURES = ["spending_today", "spending_avg_7d", "spending_trend_7d"]
 TARGET = "overspending_risk"

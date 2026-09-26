@@ -12,10 +12,11 @@ Overspending → single model (synthetic-trained Logistic Regression).
 """
 
 import os
+from pathlib import Path
 import joblib
 import pandas as pd
 
-from app.core.config import settings
+from app.core.config import BACKEND_DIR, settings
 
 # ── cached model handles ───────────────────────────────────────────────────────
 _burnout_model = None
@@ -56,8 +57,11 @@ _SCORE_LABEL = {0: "Low", 1: "Medium", 2: "High"}
 
 # ── loaders ───────────────────────────────────────────────────────────────────
 def _load_model(path: str):
-    if os.path.exists(path):
-        return joblib.load(path)
+    model_path = Path(path)
+    if not model_path.is_absolute() and not model_path.exists():
+        model_path = BACKEND_DIR / model_path
+    if model_path.exists():
+        return joblib.load(model_path)
     return None
 
 

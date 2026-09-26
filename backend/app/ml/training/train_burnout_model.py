@@ -12,6 +12,8 @@ Run: python -m app.ml.training.train_burnout_model
 """
 
 import os
+from pathlib import Path
+
 import joblib
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -23,8 +25,8 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from app.ml.wrappers import LabeledXGB
 from app.ml.training.training_utils import balance_classes
 
-DATA_PATH = "app/ml/data/burnout_data.csv"
-ARTIFACT_PATH = "app/ml/artifacts/burnout_model.joblib"
+DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "burnout_data.csv"
+ARTIFACT_PATH = Path(__file__).resolve().parents[1] / "artifacts" / "burnout_model.joblib"
 
 FEATURES = [
     "sleep_hours_avg_3d",

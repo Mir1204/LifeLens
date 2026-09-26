@@ -12,6 +12,8 @@ Run: python -m app.ml.training.train_static_stress_model
 """
 
 import os
+from pathlib import Path
+
 import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
@@ -23,8 +25,8 @@ from sklearn.preprocessing import StandardScaler
 
 from app.ml.training.training_utils import balance_classes
 
-DATA_PATH = "app/ml/data/static_stress_data.csv"
-ARTIFACT_PATH = "app/ml/artifacts/static_stress_model.joblib"
+DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "static_stress_data.csv"
+ARTIFACT_PATH = Path(__file__).resolve().parents[1] / "artifacts" / "static_stress_model.joblib"
 
 FEATURES = [
     "sleep_hours_today",
