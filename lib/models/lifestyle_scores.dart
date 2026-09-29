@@ -4,6 +4,7 @@ class LifestyleScores {
     required this.financialHealth,
     required this.stressRisk,
     required this.burnoutRisk,
+    this.overspendingScore = 0,
     required this.overspendingRisk,
     required this.recommendations,
     DateTime? date,
@@ -13,6 +14,7 @@ class LifestyleScores {
   final int financialHealth;
   final int stressRisk;
   final String burnoutRisk;
+  final int overspendingScore;
   final String overspendingRisk;
   final List<String> recommendations;
   final DateTime date;
@@ -23,6 +25,7 @@ class LifestyleScores {
       financialHealth: json['financial_health'] as int,
       stressRisk: json['stress_risk'] as int,
       burnoutRisk: json['burnout_risk'] as String,
+      overspendingScore: json['overspending_score'] as int? ?? 0,
       overspendingRisk: json['overspending_risk'] as String,
       recommendations: (json['recommendations'] as List<dynamic>)
           .map((item) => item.toString())

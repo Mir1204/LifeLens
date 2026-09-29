@@ -14,6 +14,7 @@ class DailyPayload(BaseModel):
     calendar_events: int = Field(ge=0, le=1000)
     high_priority_tasks: int = Field(ge=0, le=1000)
     total_workload: int = Field(default=0, ge=0, le=10000)
+    monthly_income: float | None = Field(default=None, ge=0, le=100_000_000)
     monthly_budget: float | None = Field(default=None, ge=0, le=100_000_000)
     entry_date: date | None = None
 
@@ -25,6 +26,7 @@ class ScoreResponse(BaseModel):
     financial_health: int
     stress_risk: int
     burnout_risk: str
+    overspending_score: int
     overspending_risk: str
     recommendations: list[str]
 

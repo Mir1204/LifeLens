@@ -1,7 +1,7 @@
 # Path: app/ml/training/train_overspend_model.py
 """
-Trains the overspending risk classifier (Low/Medium/High) on the
-synthetic dataset. Run generate_synthetic_data.py first.
+Trains the overspending risk classifier (Low/Medium/High) on real income
+and expense data.
 
 Run: python -m app.ml.training.train_overspend_model
 Output: app/ml/artifacts/overspend_model.joblib
@@ -15,24 +15,21 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 
-from app.ml.training.training_utils import add_overspend_features, balance_classes
+from app.ml.training.training_utils import balance_classes, prepare_income_overspend_data
 
-DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "overspend_data.csv"
+DATA_PATH = Path(__file__).resolve().parents[2] / "model_data" / "data.csv"
 ARTIFACT_PATH = Path(__file__).resolve().parents[1] / "artifacts" / "overspend_model.joblib"
 
 FEATURES = [
-    "spending_today",
-    "spending_avg_7d",
-    "spending_trend_7d",
-    "spending_ratio_7d",
-    "spending_trend_up",
-    "spending_high_signal",
+    "Income",
+    "monthly_spending",
+    "expense_ratio",
 ]
 TARGET = "overspending_risk"
 
 
 def main():
-    df = pd.read_csv(DATA_PATH)
+    df = prepare_income_overspend_data(pd.read_csv(DATA_PATH))
     print(f"Loaded {len(df)} rows from {DATA_PATH}")
     print("Original class distribution:")
     print(df[TARGET].value_counts().to_string())
@@ -43,8 +40,7 @@ def main():
         random_state=42,
         stratify=df[TARGET],
     )
-    train_df = add_overspend_features(balance_classes(train_df, TARGET))
-    test_df = add_overspend_features(test_df)
+    train_df = balance_classes(train_df, TARGET)
     print("\nBalanced class distribution:")
     print(train_df[TARGET].value_counts().to_string())
 

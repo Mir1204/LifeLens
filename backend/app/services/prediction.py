@@ -8,7 +8,7 @@ Burnout / Stress  → dual-model ensemble:
     Both models are optional; the service degrades gracefully to formula-based
     fallback if neither artifact exists.
 
-Overspending → single model (synthetic-trained Logistic Regression).
+Overspending → single model trained from income-relative financial data.
 """
 
 import os
@@ -45,12 +45,9 @@ STATIC_STRESS_FEATURES = [
 ]
 
 OVERSPEND_FEATURES = [
-    "spending_today",
-    "spending_avg_7d",
-    "spending_trend_7d",
-    "spending_ratio_7d",
-    "spending_trend_up",
-    "spending_high_signal",
+    "Income",
+    "monthly_spending",
+    "expense_ratio",
 ]
 
 # ── label ordering ─────────────────────────────────────────────────────────────
@@ -240,31 +237,30 @@ def predict_burnout_risk(features: dict) -> tuple[int, str]:
     return numeric_score, final_label
 
 
-def predict_overspending_risk(features: dict) -> str:
-    """Returns 'Low' | 'Medium' | 'High'."""
+def _overspending_score(expense_ratio: float) -> int:
+    return round(max(0, min(100, (expense_ratio - 0.5) / 0.5 * 100)))
+
+
+def predict_overspending_risk(features: dict) -> tuple[int, str]:
+    """Returns an income-relative overspending score and risk label."""
     model = get_overspend_model()
 
-    if model is None:
+    monthly_income = features.get("monthly_income")
+    if model is not None and monthly_income and monthly_income > 0:
+        monthly_spending = features.get("spending_avg_7d", 0) * 30
+        expense_ratio = monthly_spending / monthly_income
+        row = pd.DataFrame([{
+            "Income": monthly_income,
+            "monthly_spending": monthly_spending,
+            "expense_ratio": expense_ratio,
+        }])
+        return _overspending_score(expense_ratio), str(model.predict(row)[0])
+
+    if model is None or not monthly_income or monthly_income <= 0:
         spending_ratio = features.get("spending_today", 0) / max(
             features.get("spending_avg_7d", 1), 1
         )
-        return "High" if spending_ratio > 1.5 else "Medium" if spending_ratio > 1.15 else "Low"
+        label = "High" if spending_ratio > 1.5 else "Medium" if spending_ratio > 1.15 else "Low"
+        return _overspending_score(spending_ratio), label
 
-    spending_average = max(features.get("spending_avg_7d", 1), 1)
-    model_features = {
-        **features,
-        "spending_ratio_7d": features.get("spending_today", 0) / spending_average,
-        "spending_trend_up": int(features.get("spending_trend_7d", 0) > 40),
-    }
-    model_features["spending_high_signal"] = int(
-        model_features["spending_ratio_7d"] > 1.6
-        or (
-            model_features["spending_ratio_7d"] > 1.3
-            and model_features["spending_trend_up"] == 1
-        )
-    )
-    row = pd.DataFrame([{k: model_features.get(k, 0) for k in OVERSPEND_FEATURES}])
-    proba  = model.predict_proba(row)[0]
-    classes = list(model.classes_)
-    label  = classes[proba.argmax()]
-    return str(label)
+    raise RuntimeError("Overspending model did not produce a prediction")

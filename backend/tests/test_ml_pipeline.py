@@ -39,6 +39,10 @@ FEATURES = {
     "spending_today": 300.0,
     "spending_avg_7d": 300.0,
     "spending_trend_7d": 0.0,
+    "monthly_income": 5000.0,
+    "Income": 5000.0,
+    "monthly_spending": 3600.0,
+    "expense_ratio": 0.72,
     "steps_today": 8000,
 }
 
@@ -56,10 +60,12 @@ class MlPipelineTests(unittest.TestCase):
 
     def test_all_models_return_valid_predictions(self):
         stress_score, burnout_label = predict_burnout_risk(FEATURES)
-        overspending_label = predict_overspending_risk(FEATURES)
+        overspending_score, overspending_label = predict_overspending_risk(FEATURES)
         self.assertGreaterEqual(stress_score, 0)
         self.assertLessEqual(stress_score, 100)
         self.assertIn(burnout_label, {"Low", "Medium", "High"})
+        self.assertGreaterEqual(overspending_score, 0)
+        self.assertLessEqual(overspending_score, 100)
         self.assertIn(overspending_label, {"Low", "Medium", "High"})
 
     def test_formula_scores_stay_bounded(self):

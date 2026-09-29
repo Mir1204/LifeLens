@@ -33,7 +33,9 @@ backend:
 The model-backed predictions use the three checked-in Joblib artifacts and the
 feature lists in `backend/app/services/prediction.py`. The static stress model
 is trained from the checked-in `backend/app/model_data/Sleep_health_and_lifestyle_dataset.csv`;
-the burnout and overspending models use generated synthetic longitudinal data.
+the burnout model uses generated synthetic longitudinal data, while the
+overspending model uses `backend/app/model_data/data.csv` and an
+income-relative expense target.
 
 ## Current Components
 
@@ -133,11 +135,9 @@ backend/app/ml/training/generate_synthetic_data.py
 
 Synthetic data is used because the project does not have long-term real user data during one semester.
 
-Generated datasets (created by the training command and intentionally not
-required at runtime):
+The generated datasets are used for burnout training only:
 
 - `app/ml/data/burnout_data.csv`
-- `app/ml/data/overspend_data.csv`
 
 ## Training Scripts
 
@@ -158,7 +158,8 @@ backend/app/ml/training/train_static_stress_model.py
 
 Current overspending model:
 
-- Logistic Regression
+- Histogram Gradient Boosting
+- Features: income, estimated monthly spending, expense-to-income ratio
 - Multiclass labels: `Low`, `Medium`, `High`
 
 Planned burnout model:

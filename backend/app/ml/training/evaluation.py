@@ -17,7 +17,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 
-from app.ml.training.training_utils import add_overspend_features, balance_classes
+from app.ml.training.training_utils import balance_classes, prepare_income_overspend_data
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -65,15 +65,12 @@ MODEL_CONFIGS = [
     ),
     ModelEvaluationConfig(
         name="Overspending",
-        data_path=BASE_DIR / "data" / "overspend_data.csv",
+        data_path=BASE_DIR.parent / "model_data" / "data.csv",
         artifact_path=BASE_DIR / "artifacts" / "overspend_model.joblib",
         features=[
-            "spending_today",
-            "spending_avg_7d",
-            "spending_trend_7d",
-            "spending_ratio_7d",
-            "spending_trend_up",
-            "spending_high_signal",
+            "Income",
+            "monthly_spending",
+            "expense_ratio",
         ],
         target="overspending_risk",
     ),
@@ -91,6 +88,8 @@ def evaluate_model(config: ModelEvaluationConfig) -> None:
         )
 
     df = pd.read_csv(config.data_path)
+    if config.name == "Overspending":
+        df = prepare_income_overspend_data(df)
     train_df, test_df = train_test_split(
         df,
         test_size=0.2,
@@ -98,10 +97,6 @@ def evaluate_model(config: ModelEvaluationConfig) -> None:
         stratify=df[config.target],
     )
     train_df = balance_classes(train_df, config.target)
-    if config.name == "Overspending":
-        train_df = add_overspend_features(train_df)
-        test_df = add_overspend_features(test_df)
-
     X_test = test_df[config.features]
     y_test = test_df[config.target]
 

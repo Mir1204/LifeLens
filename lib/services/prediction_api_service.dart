@@ -11,6 +11,7 @@ class PredictionPayload {
     required this.calendarEvents,
     required this.highPriorityTasks,
     required this.totalWorkload,
+    this.monthlyIncome,
     this.monthlyBudget,
   });
 
@@ -19,6 +20,7 @@ class PredictionPayload {
   final int calendarEvents;
   final int highPriorityTasks;
   final int totalWorkload;
+  final double? monthlyIncome;
   final double? monthlyBudget;
 
   Map<String, Object> toJson() {
@@ -30,6 +32,7 @@ class PredictionPayload {
       'calendar_events': calendarEvents,
       'high_priority_tasks': highPriorityTasks,
       'total_workload': totalWorkload,
+      if (monthlyIncome != null) 'monthly_income': monthlyIncome!,
       // Keep the day with the aggregate even though the UI does not display it.
       // The backend uses it to build correct 3-day and 7-day windows.
       'entry_date': _dayKey(health.date),

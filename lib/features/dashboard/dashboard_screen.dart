@@ -653,7 +653,7 @@ class _AiPredictionPanel extends StatelessWidget {
                 ),
                 _AiChip(
                   label: 'Overspend',
-                  value: scores.overspendingRisk,
+                  value: '${scores.overspendingScore}/100 - ${scores.overspendingRisk}',
                   icon: Icons.account_balance_wallet_outlined,
                   color: _riskColor(scores.overspendingRisk),
                 ),
@@ -1051,7 +1051,7 @@ class _SummaryPanel extends StatelessWidget {
             _MetricRow(
               icon: Icons.warning_amber,
               label: 'Overspending risk',
-              value: scores.overspendingRisk,
+              value: '${scores.overspendingScore}/100 - ${scores.overspendingRisk}',
               valueColor: _riskColor(scores.overspendingRisk),
             ),
           ],

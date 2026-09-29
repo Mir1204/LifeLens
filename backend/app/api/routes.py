@@ -221,12 +221,13 @@ def predict_daily_score(payload: DailyPayload, user_id: str = Depends(current_us
         db.add(DailyEntry(user_id=user_id, entry_date=entry_date, **today_dict))
     db.commit()
     features = build_rolling_features(db, user_id, today_dict, entry_date)
+    features["monthly_income"] = payload.monthly_income
     productivity = calculate_productivity(payload.sleep_hours, payload.steps, payload.screen_time_hours, payload.total_workload)
     financial_health = calculate_financial_health(payload.daily_spending, payload.monthly_budget)
     stress_risk, burnout_label = predict_burnout_risk(features)
-    overspending_label = predict_overspending_risk(features)
+    overspending_score, overspending_label = predict_overspending_risk(features)
     recommendations = build_recommendations(payload.sleep_hours, payload.screen_time_hours, financial_health, stress_risk, productivity, payload.monthly_budget)
-    return ScoreResponse(productivity=productivity, financial_health=financial_health, stress_risk=stress_risk, burnout_risk=burnout_label, overspending_risk=overspending_label, recommendations=recommendations)
+    return ScoreResponse(productivity=productivity, financial_health=financial_health, stress_risk=stress_risk, burnout_risk=burnout_label, overspending_score=overspending_score, overspending_risk=overspending_label, recommendations=recommendations)
 
 
 @router.delete("/me/data", status_code=status.HTTP_204_NO_CONTENT)

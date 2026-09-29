@@ -493,6 +493,7 @@ class LifeLensStore extends ChangeNotifier {
         calendarEvents: taskCountForDay(health.date),
         highPriorityTasks: highPriorityTasksForDay(health.date),
         totalWorkload: totalWorkloadForDay(health.date),
+        monthlyIncome: user.monthlyIncome,
         monthlyBudget: monthlySpendingBudget > 0 ? monthlySpendingBudget : null,
       );
       try {
@@ -1017,6 +1018,7 @@ class LifeLensStore extends ChangeNotifier {
       financialHealth: financialHealth,
       stressRisk: stressRisk,
       burnoutRisk: _riskLabel(stressRisk),
+      overspendingScore: 100 - financialHealth,
       overspendingRisk: _riskLabel(100 - financialHealth),
       recommendations: _recommendations(
         productivity: productivity,

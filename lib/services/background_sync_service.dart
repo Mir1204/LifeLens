@@ -140,6 +140,7 @@ class BackgroundSyncService {
         calendarEvents: dayTasks.length,
         highPriorityTasks: highPriority,
         totalWorkload: workload,
+        monthlyIncome: user.monthlyIncome,
         monthlyBudget: user.monthlyBudget,
       );
       LifestyleScores scores;
