@@ -48,6 +48,9 @@ OVERSPEND_FEATURES = [
     "spending_today",
     "spending_avg_7d",
     "spending_trend_7d",
+    "spending_ratio_7d",
+    "spending_trend_up",
+    "spending_high_signal",
 ]
 
 # ── label ordering ─────────────────────────────────────────────────────────────
@@ -247,7 +250,20 @@ def predict_overspending_risk(features: dict) -> str:
         )
         return "High" if spending_ratio > 1.5 else "Medium" if spending_ratio > 1.15 else "Low"
 
-    row = pd.DataFrame([{k: features.get(k, 0) for k in OVERSPEND_FEATURES}])
+    spending_average = max(features.get("spending_avg_7d", 1), 1)
+    model_features = {
+        **features,
+        "spending_ratio_7d": features.get("spending_today", 0) / spending_average,
+        "spending_trend_up": int(features.get("spending_trend_7d", 0) > 40),
+    }
+    model_features["spending_high_signal"] = int(
+        model_features["spending_ratio_7d"] > 1.6
+        or (
+            model_features["spending_ratio_7d"] > 1.3
+            and model_features["spending_trend_up"] == 1
+        )
+    )
+    row = pd.DataFrame([{k: model_features.get(k, 0) for k in OVERSPEND_FEATURES}])
     proba  = model.predict_proba(row)[0]
     classes = list(model.classes_)
     label  = classes[proba.argmax()]

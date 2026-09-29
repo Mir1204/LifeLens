@@ -104,6 +104,7 @@ def label_overspend(row: dict) -> str:
     else:
         label = "Low"
 
+    # remove this 
     if np.random.rand() < 0.05:
         label = np.random.choice(["Low", "Medium", "High"])
     return label

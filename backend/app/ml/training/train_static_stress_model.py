@@ -16,7 +16,7 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
@@ -53,22 +53,35 @@ def build_rf_pipeline() -> Pipeline:
     ])
 
 
+def build_hist_gradient_boosting_model() -> HistGradientBoostingClassifier:
+    return HistGradientBoostingClassifier(
+        learning_rate=0.05,
+        max_iter=300,
+        max_leaf_nodes=15,
+        random_state=42,
+    )
+
+
 def main() -> None:
     df = pd.read_csv(DATA_PATH)
     print(f"Loaded {len(df)} rows from {DATA_PATH}")
     print("Original class distribution:")
     print(df[TARGET].value_counts().to_string())
 
-    df = balance_classes(df, TARGET)
-    print("\nBalanced class distribution:")
-    print(df[TARGET].value_counts().to_string())
-
-    X = df[FEATURES]
-    y = df[TARGET]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+    train_df, test_df = train_test_split(
+        df,
+        test_size=0.2,
+        random_state=42,
+        stratify=df[TARGET],
     )
+    train_df = balance_classes(train_df, TARGET)
+    print("\nBalanced class distribution:")
+    print(train_df[TARGET].value_counts().to_string())
+
+    X_train = train_df[FEATURES]
+    y_train = train_df[TARGET]
+    X_test = test_df[FEATURES]
+    y_test = test_df[TARGET]
 
     # ── Logistic Regression ────────────────────────────────────────────────────
     lr = build_lr_pipeline()
@@ -84,11 +97,20 @@ def main() -> None:
     print(f"Random Forest        accuracy: {rf_acc:.4f}")
     print(classification_report(y_test, rf.predict(X_test)))
 
+    # ── Histogram Gradient Boosting ──────────────────────────────────────────
+    hist = build_hist_gradient_boosting_model()
+    hist.fit(X_train, y_train)
+    hist_acc = accuracy_score(y_test, hist.predict(X_test))
+    print(f"HistGradientBoosting  accuracy: {hist_acc:.4f}")
+    print(classification_report(y_test, hist.predict(X_test)))
+
     # ── Keep the winner ────────────────────────────────────────────────────────
-    if rf_acc >= lr_acc:
-        best, best_name, best_acc = rf, "Random Forest", rf_acc
-    else:
-        best, best_name, best_acc = lr, "Logistic Regression", lr_acc
+    candidates = [
+        (lr, "Logistic Regression", lr_acc),
+        (rf, "Random Forest", rf_acc),
+        (hist, "HistGradientBoosting", hist_acc),
+    ]
+    best, best_name, best_acc = max(candidates, key=lambda candidate: candidate[2])
 
     print(f"\n>> Saving {best_name} (acc={best_acc:.4f}) -> {ARTIFACT_PATH}")
     os.makedirs(os.path.dirname(ARTIFACT_PATH), exist_ok=True)

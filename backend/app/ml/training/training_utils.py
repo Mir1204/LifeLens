@@ -27,3 +27,17 @@ def balance_classes(df: pd.DataFrame, target_column: str, random_state: int = 42
 
     balanced = pd.concat(balanced_parts, ignore_index=True)
     return balanced.sample(frac=1.0, random_state=random_state).reset_index(drop=True)
+
+
+def add_overspend_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add the ratio and threshold flag used by overspending classification."""
+    enriched = df.copy()
+    enriched["spending_ratio_7d"] = (
+        enriched["spending_today"] / enriched["spending_avg_7d"].clip(lower=1)
+    )
+    enriched["spending_trend_up"] = (enriched["spending_trend_7d"] > 40).astype(int)
+    enriched["spending_high_signal"] = (
+        (enriched["spending_ratio_7d"] > 1.6)
+        | ((enriched["spending_ratio_7d"] > 1.3) & (enriched["spending_trend_up"] == 1))
+    ).astype(int)
+    return enriched
