@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     def require_postgres_tls(cls, value: str) -> str:
         # SQLite is allowed only for local development. Production Postgres must
         # negotiate TLS; encryption at rest is enabled in the managed provider.
+        # Render/Supabase connection strings are sometimes pasted without their
+        # query suffix. Add it safely rather than letting the service crash at
+        # startup, while preserving any existing connection parameters.
+        if value.startswith("postgresql") and "sslmode=" not in value:
+            value = f"{value}{'&' if '?' in value else '?'}sslmode=require"
         if value.startswith("postgresql") and "sslmode=require" not in value:
             raise ValueError("DATABASE_URL must use sslmode=require")
         return value

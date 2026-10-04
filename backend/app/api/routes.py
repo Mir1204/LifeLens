@@ -85,7 +85,11 @@ def current_user_id(
         if active_session is None:
             raise ValueError("session revoked")
         return user_id
-    except jwt.PyJWTError as error:
+    # A token may be structurally valid JWT but belong to an older app build
+    # that did not issue the required access claims. Treat it as unauthenticated
+    # so the client can refresh or ask the user to sign in again; never expose
+    # this as a server-side 500 error.
+    except (jwt.PyJWTError, ValueError) as error:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from error
 
 
