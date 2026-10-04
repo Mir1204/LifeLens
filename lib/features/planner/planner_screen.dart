@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/lifestyle_entry.dart';
@@ -21,14 +23,28 @@ class _PlannerScreenState extends State<PlannerScreen> {
   TimeOfDay taskTime = const TimeOfDay(hour: 9, minute: 0);
   bool addToGoogleCalendar = false;
   int? reminderMinutes = 15;
-  String taskFilter = 'Today';
   String sortBy = 'Date';
   String query = '';
+  final Set<int> _celebratingTaskIds = {};
+  bool _showAllActive = false;
+  bool _showAllCompleted = false;
+  bool _isAddingTask = false;
+  Timer? _overdueRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // A task changes to overdue based on the device's local date and time.
+    _overdueRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void dispose() {
     titleController.dispose();
     noteController.dispose();
+    _overdueRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -56,233 +72,351 @@ class _PlannerScreenState extends State<PlannerScreen> {
               ),
               const SizedBox(height: 12),
 
+              TextField(
+                onChanged: (value) =>
+                    setState(() => query = value.toLowerCase()),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.search, size: 20),
+                  hintText: 'Search tasks',
+                ),
+              ),
+              const SizedBox(height: 8),
               Row(
                 children: [
+                  const Spacer(),
                   Expanded(
-                    child: TextField(
-                      onChanged: (value) =>
-                          setState(() => query = value.toLowerCase()),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        prefixIcon: Icon(Icons.search, size: 20),
-                        hintText: 'Search tasks',
+                    child: PopupMenuButton<String>(
+                      onSelected: (value) => setState(() => sortBy = value),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'Date',
+                          child: Text('Sort by date'),
+                        ),
+                        PopupMenuItem(
+                          value: 'Priority',
+                          child: Text('Sort by priority'),
+                        ),
+                      ],
+                      child: _TaskMenuControl(
+                        icon: Icons.sort,
+                        label: 'Sort: $sortBy',
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  PopupMenuButton<String>(
-                    tooltip: 'Show tasks',
-                    icon: const Icon(Icons.filter_list),
-                    onSelected: (value) => setState(() => taskFilter = value),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'Today', child: Text('Today')),
-                      PopupMenuItem(value: 'Upcoming', child: Text('Upcoming')),
-                      PopupMenuItem(
-                        value: 'Completed',
-                        child: Text('Completed'),
-                      ),
-                      PopupMenuItem(value: 'All', child: Text('All tasks')),
-                    ],
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Sort tasks',
-                    icon: const Icon(Icons.sort),
-                    onSelected: (value) => setState(() => sortBy = value),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'Date', child: Text('Sort by date')),
-                      PopupMenuItem(
-                        value: 'Priority',
-                        child: Text('Sort by priority'),
-                      ),
-                    ],
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // ── Add task form ─────────────────────────────────────────────
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextFormField(
-                          controller: titleController,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(
-                            labelText: 'Task or event',
-                            hintText: 'Example: Study ML chapter',
-                            prefixIcon: Icon(Icons.task_alt),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Please enter a task name';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: noteController,
-                          maxLines: 2,
-                          decoration: const InputDecoration(
-                            labelText: 'Notes (optional)',
-                            prefixIcon: Icon(Icons.notes_outlined),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SegmentedButton<TaskPriority>(
-                          segments: const [
-                            ButtonSegment(
-                              value: TaskPriority.low,
-                              label: Text('Low'),
-                              icon: Icon(Icons.keyboard_arrow_down),
-                            ),
-                            ButtonSegment(
-                              value: TaskPriority.medium,
-                              label: Text('Medium'),
-                              icon: Icon(Icons.remove),
-                            ),
-                            ButtonSegment(
-                              value: TaskPriority.high,
-                              label: Text('High'),
-                              icon: Icon(Icons.priority_high),
-                            ),
-                          ],
-                          selected: {priority},
-                          onSelectionChanged: (value) {
-                            setState(() => priority = value.first);
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _pickTaskDate,
-                          icon: const Icon(Icons.calendar_today_outlined),
-                          label: Text('Due ${_formatDate(taskDate)}'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _pickTaskTime,
-                          icon: const Icon(Icons.schedule),
-                          label: Text('Time ${taskTime.format(context)}'),
-                        ),
-                        DropdownButtonFormField<int?>(
-                          initialValue: reminderMinutes,
-                          isExpanded: true,
-                          isDense: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Task reminder',
-                            prefixIcon: Icon(Icons.notifications_outlined),
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 14,
-                            ),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: null,
-                              child: Text('No reminder'),
-                            ),
-                            DropdownMenuItem(
-                              value: 10,
-                              child: Text('10 minutes before'),
-                            ),
-                            DropdownMenuItem(
-                              value: 15,
-                              child: Text('15 minutes before'),
-                            ),
-                            DropdownMenuItem(
-                              value: 30,
-                              child: Text('30 minutes before'),
-                            ),
-                            DropdownMenuItem(
-                              value: 60,
-                              child: Text('1 hour before'),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => reminderMinutes = value),
-                        ),
-                        SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          value: addToGoogleCalendar,
-                          onChanged: (value) =>
-                              setState(() => addToGoogleCalendar = value),
-                          title: const Text('Add to Google Calendar'),
-                          subtitle: const Text(
-                            'Creates a one-hour event at the selected time',
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _saveTask,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Task'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              _TaskListModule(
+                title: 'Current & remaining tasks',
+                subtitle: 'Complete what matters next',
+                tasks: _displayedActiveTasks,
+                totalCount: _activeTasks.length,
+                showingAll: _showAllActive,
+                onToggleMore: () =>
+                    setState(() => _showAllActive = !_showAllActive),
+                showCompletionControl: true,
+                emptyLabel: query.isEmpty
+                    ? 'Nothing remaining — enjoy the breathing room.'
+                    : 'No remaining tasks match your search.',
+                itemBuilder: _buildTaskCard,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-              // ── Task list ─────────────────────────────────────────────────
-              if (_visibleTasks.isEmpty)
-                const _EmptyTasks()
-              else ...[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'Tap circle to complete • Swipe left to delete',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: .5),
-                    ),
-                  ),
+              // ── Add task form ─────────────────────────────────────────────
+              if (query.isEmpty)
+                Card(
+                  child: _isAddingTask
+                      ? Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.add_task, size: 20),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Add task',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: titleController,
+                                  textInputAction: TextInputAction.done,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Task or event',
+                                    hintText: 'Example: Study ML chapter',
+                                    prefixIcon: Icon(Icons.task_alt),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Please enter a task name';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: noteController,
+                                  maxLines: 2,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Notes (optional)',
+                                    prefixIcon: Icon(Icons.notes_outlined),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text('Task importance'),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: TaskPriority.values
+                                      .map(
+                                        (value) => Expanded(
+                                          child: Padding(
+                                            padding: EdgeInsets.only(
+                                              right: value == TaskPriority.high
+                                                  ? 0
+                                                  : 8,
+                                            ),
+                                            child: ChoiceChip(
+                                              label: Text(
+                                                value.name[0].toUpperCase() +
+                                                    value.name.substring(1),
+                                              ),
+                                              selected: priority == value,
+                                              onSelected: (_) => setState(
+                                                () => priority = value,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _pickTaskDate,
+                                        icon: const Icon(
+                                          Icons.calendar_today_outlined,
+                                          size: 18,
+                                        ),
+                                        label: Text(_formatDate(taskDate)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _pickTaskTime,
+                                        icon: const Icon(
+                                          Icons.schedule,
+                                          size: 18,
+                                        ),
+                                        label: Text(taskTime.format(context)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                const Text('Task reminder'),
+                                const SizedBox(height: 6),
+                                DropdownButtonFormField<int?>(
+                                  initialValue: reminderMinutes,
+                                  isExpanded: true,
+                                  isDense: true,
+                                  decoration: const InputDecoration(
+                                    prefixIcon: Icon(
+                                      Icons.notifications_outlined,
+                                    ),
+                                    hintText: 'Choose a reminder',
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: null,
+                                      child: Text('No reminder'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 10,
+                                      child: Text('10 minutes before'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 15,
+                                      child: Text('15 minutes before'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 30,
+                                      child: Text('30 minutes before'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 60,
+                                      child: Text('1 hour before'),
+                                    ),
+                                  ],
+                                  onChanged: (value) =>
+                                      setState(() => reminderMinutes = value),
+                                ),
+                                SwitchListTile.adaptive(
+                                  contentPadding: EdgeInsets.zero,
+                                  value: addToGoogleCalendar,
+                                  onChanged: (value) => setState(
+                                    () => addToGoogleCalendar = value,
+                                  ),
+                                  title: const Text('Add to Google Calendar'),
+                                  subtitle: const Text(
+                                    'Creates a one-hour event at the selected time',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: FilledButton.icon(
+                                    onPressed: _saveTask,
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add Task'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : ListTile(
+                          leading: const Icon(Icons.add_task),
+                          title: const Text('Add task'),
+                          subtitle: const Text(
+                            'Create a task, schedule, and reminder',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => setState(() => _isAddingTask = true),
+                        ),
                 ),
-                for (final task in _visibleTasks)
-                  Dismissible(
-                    key: ValueKey(task.id ?? task.hashCode),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade400,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.delete, color: Colors.white),
-                    ),
-                    onDismissed: (_) => _deleteTask(task),
-                    child: Card(
-                      child: ListTile(
-                        onTap: () => _editTask(task),
-                        leading: GestureDetector(
-                          onTap: () => widget.store.toggleTask(task),
+              const SizedBox(height: 16),
+              _TaskListModule(
+                title: 'Completed tasks',
+                subtitle: 'Your completed work stays here',
+                tasks: _completedTasks,
+                totalCount: _completedTasks.length,
+                showingAll: _showAllCompleted,
+                onToggleMore: () =>
+                    setState(() => _showAllCompleted = !_showAllCompleted),
+                showCompletionControl: false,
+                allowSeeMore: false,
+                emptyLabel: query.isEmpty
+                    ? 'Completed tasks will appear here.'
+                    : 'No completed tasks match your search.',
+                itemBuilder: _buildTaskCard,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<PlannerEntry> get _activeTasks => _tasksFor(completed: false);
+
+  List<PlannerEntry> get _completedTasks => _tasksFor(completed: true);
+
+  List<PlannerEntry> get _displayedActiveTasks =>
+      query.isNotEmpty || _showAllActive
+      ? _activeTasks
+      : _activeTasks.take(4).toList();
+
+  List<PlannerEntry> _tasksFor({required bool completed}) {
+    final items = widget.store.tasks
+        .where(
+          (task) =>
+              task.isCompleted == completed &&
+              (query.isEmpty ||
+                  task.title.toLowerCase().contains(query) ||
+                  task.note.toLowerCase().contains(query)),
+        )
+        .toList();
+    items.sort(
+      (a, b) => sortBy == 'Priority'
+          ? b.priority.index.compareTo(a.priority.index)
+          : a.date.compareTo(b.date),
+    );
+    return items;
+  }
+
+  Widget _buildTaskCard(PlannerEntry task) {
+    return Dismissible(
+      key: ValueKey(task.id ?? task.hashCode),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: Colors.red.shade400,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (_) => _deleteTask(task),
+      child: Builder(
+        builder: (context) {
+          final isCompleting = _celebratingTaskIds.contains(task.id);
+          final showCompleted = task.isCompleted || isCompleting;
+          final isOverdue = _isTaskOverdue(task);
+          final scheme = Theme.of(context).colorScheme;
+          return AnimatedOpacity(
+            opacity: isCompleting ? .4 : 1,
+            duration: const Duration(milliseconds: 650),
+            curve: Curves.easeIn,
+            child: AnimatedScale(
+              scale: isCompleting ? 0.98 : 1,
+              duration: const Duration(milliseconds: 650),
+              curve: Curves.easeInOut,
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                color: isOverdue
+                    ? scheme.errorContainer.withValues(alpha: .38)
+                    : null,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: isOverdue
+                      ? BorderSide(color: scheme.error.withValues(alpha: .65))
+                      : BorderSide.none,
+                ),
+                child: ListTile(
+                  onTap: () => task.isCompleted
+                      ? _showCompletedTaskActions(task)
+                      : _editTask(task),
+                  leading: task.isCompleted
+                      ? null
+                      : GestureDetector(
+                          onTap: isCompleting ? null : () => _toggleTask(task),
                           child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
+                            duration: const Duration(milliseconds: 180),
+                            width: 28,
+                            height: 28,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: task.isCompleted
+                              color: showCompleted
                                   ? const Color(0xFF287D5A)
                                   : Colors.transparent,
                               border: Border.all(
-                                color: task.isCompleted
+                                color: showCompleted
                                     ? const Color(0xFF287D5A)
                                     : Theme.of(context).colorScheme.outline,
                                 width: 2,
                               ),
                             ),
-                            width: 28,
-                            height: 28,
-                            child: task.isCompleted
+                            child: showCompleted
                                 ? const Icon(
                                     Icons.check,
                                     color: Colors.white,
@@ -291,56 +425,64 @@ class _PlannerScreenState extends State<PlannerScreen> {
                                 : null,
                           ),
                         ),
-                        title: Text(
-                          task.title,
-                          style: TextStyle(
-                            decoration: task.isCompleted
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: task.isCompleted
-                                ? Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface.withValues(alpha: .4)
-                                : null,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${_formatTaskTime(task.timeMinutes)}${task.note.isEmpty ? '' : ' • ${task.note}'}',
-                        ),
-                        trailing: _PriorityChip(priority: task.priority),
-                      ),
+                  title: Text(
+                    task.title,
+                    style: TextStyle(
+                      decoration: task.isCompleted
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: task.isCompleted
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: .4)
+                          : isOverdue
+                          ? scheme.error
+                          : null,
                     ),
                   ),
-              ],
-            ],
-          ),
-        ),
-      ],
+                  subtitle: Text(
+                    '${isOverdue ? 'Overdue • ' : ''}${_formatDate(task.date)} • ${_formatTaskTime(task.timeMinutes)}${task.note.isEmpty ? '' : ' • ${task.note}'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _PriorityChip(priority: task.priority),
+                      if (isOverdue) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Overdue',
+                          style: TextStyle(
+                            color: scheme.error,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
-  List<PlannerEntry> get _visibleTasks {
+  bool _isTaskOverdue(PlannerEntry task) {
+    if (task.isCompleted) return false;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final items = widget.store.tasks.where((task) {
-      final day = DateTime(task.date.year, task.date.month, task.date.day);
-      final filterOk = switch (taskFilter) {
-        'Today' => day == today && !task.isCompleted,
-        'Upcoming' => day.isAfter(today) && !task.isCompleted,
-        'Completed' => task.isCompleted,
-        _ => true,
-      };
-      return filterOk &&
-          (query.isEmpty ||
-              task.title.toLowerCase().contains(query) ||
-              task.note.toLowerCase().contains(query));
-    }).toList();
-    items.sort(
-      (a, b) => sortBy == 'Priority'
-          ? b.priority.index.compareTo(a.priority.index)
-          : a.date.compareTo(b.date),
-    );
-    return items;
+    final taskDay = DateTime(task.date.year, task.date.month, task.date.day);
+
+    if (taskDay.isBefore(today)) return true;
+    if (taskDay.isAfter(today)) return false;
+
+    final currentMinutes = now.hour * 60 + now.minute;
+    return task.timeMinutes < currentMinutes;
   }
 
   Future<void> _saveTask() async {
@@ -374,6 +516,7 @@ class _PlannerScreenState extends State<PlannerScreen> {
     }
     titleController.clear();
     noteController.clear();
+    setState(() => _isAddingTask = false);
     FocusScope.of(context).unfocus();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -402,6 +545,51 @@ class _PlannerScreenState extends State<PlannerScreen> {
       initialTime: taskTime,
     );
     if (selected != null) setState(() => taskTime = selected);
+  }
+
+  Future<void> _toggleTask(PlannerEntry task) async {
+    final id = task.id;
+    if (task.isCompleted || id == null) {
+      await widget.store.toggleTask(task);
+      return;
+    }
+    setState(() => _celebratingTaskIds.add(id));
+    await Future<void>.delayed(const Duration(milliseconds: 750));
+    await widget.store.toggleTask(task);
+    if (mounted) setState(() => _celebratingTaskIds.remove(id));
+  }
+
+  Future<void> _showCompletedTaskActions(PlannerEntry task) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(task.title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              const Text('This task is marked as completed.'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(sheetContext);
+                    await widget.store.toggleTask(task);
+                  },
+                  icon: const Icon(Icons.undo),
+                  label: const Text('Undo completion'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _formatTaskTime(int minutes) =>
@@ -451,40 +639,61 @@ class _PlannerScreenState extends State<PlannerScreen> {
                   onChanged: (value) =>
                       setDialogState(() => selectedPriority = value!),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    final value = await showDatePicker(
-                      context: context,
-                      initialDate: date,
-                      firstDate: DateTime.now().subtract(
-                        const Duration(days: 1),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final value = await showDatePicker(
+                            context: context,
+                            initialDate: date,
+                            firstDate: DateTime.now().subtract(
+                              const Duration(days: 1),
+                            ),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (value != null) setDialogState(() => date = value);
+                        },
+                        icon: const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 17,
+                        ),
+                        label: Text(_formatDate(date)),
                       ),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (value != null) setDialogState(() => date = value);
-                  },
-                  child: Text(_formatDate(date)),
+                    ),
+                    Expanded(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final value = await showTimePicker(
+                            context: context,
+                            initialTime: time,
+                          );
+                          if (value != null) setDialogState(() => time = value);
+                        },
+                        icon: const Icon(Icons.schedule, size: 17),
+                        label: Text(time.format(context)),
+                      ),
+                    ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: () async {
-                    final value = await showTimePicker(
-                      context: context,
-                      initialTime: time,
-                    );
-                    if (value != null) setDialogState(() => time = value);
-                  },
-                  child: Text(time.format(context)),
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Task reminder'),
                 ),
+                const SizedBox(height: 6),
                 DropdownButtonFormField<int?>(
                   initialValue: selectedReminder,
                   isExpanded: true,
                   isDense: true,
                   decoration: const InputDecoration(
-                    labelText: 'Task reminder',
                     prefixIcon: Icon(Icons.notifications_outlined),
+                    hintText: 'Choose a reminder',
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 14,
+                      vertical: 12,
                     ),
                   ),
                   items: const [
@@ -566,6 +775,121 @@ class _PlannerScreenState extends State<PlannerScreen> {
   }
 }
 
+class _TaskListModule extends StatelessWidget {
+  const _TaskListModule({
+    required this.title,
+    required this.subtitle,
+    required this.tasks,
+    required this.totalCount,
+    required this.showingAll,
+    required this.onToggleMore,
+    required this.showCompletionControl,
+    this.allowSeeMore = true,
+    required this.emptyLabel,
+    required this.itemBuilder,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<PlannerEntry> tasks;
+  final int totalCount;
+  final bool showingAll;
+  final VoidCallback onToggleMore;
+  final bool showCompletionControl;
+  final bool allowSeeMore;
+  final String emptyLabel;
+  final Widget Function(PlannerEntry task) itemBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (tasks.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: .45),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              emptyLabel,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          )
+        else ...[
+          Text(
+            showCompletionControl
+                ? 'Tap a circle to complete • Swipe left to delete'
+                : 'Swipe left to delete',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: .55),
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final task in tasks) itemBuilder(task),
+          if (allowSeeMore && totalCount > 4 && tasks.length < totalCount)
+            Center(
+              child: TextButton(
+                onPressed: onToggleMore,
+                child: Text(
+                  showingAll
+                      ? 'Show less'
+                      : 'See more (${totalCount - tasks.length})',
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TaskMenuControl extends StatelessWidget {
+  const _TaskMenuControl({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 40,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      border: Border.all(color: Theme.of(context).colorScheme.outline),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 6),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+      ],
+    ),
+  );
+}
+
 class _PriorityChip extends StatelessWidget {
   const _PriorityChip({required this.priority});
 
@@ -591,41 +915,6 @@ class _PriorityChip extends StatelessWidget {
           color: color,
           fontWeight: FontWeight.w700,
           fontSize: 12,
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyTasks extends StatelessWidget {
-  const _EmptyTasks();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-        child: Column(
-          children: [
-            Icon(
-              Icons.event_note_outlined,
-              size: 48,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: .3),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No tasks yet',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Add tasks to estimate workload and burnout risk.',
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
         ),
       ),
     );

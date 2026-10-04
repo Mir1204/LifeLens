@@ -106,14 +106,16 @@ ThemeData _build(Brightness brightness) {
     // ── Buttons ───────────────────────────────────────────────────────────
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
+        // Width must stay unconstrained so buttons can safely be used in Rows
+        // (for example the walkthrough's Next button).
+        minimumSize: const Size(0, 52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
+        minimumSize: const Size(0, 48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         side: const BorderSide(color: _seed),
         textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),

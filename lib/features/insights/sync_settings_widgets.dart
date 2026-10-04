@@ -47,11 +47,19 @@ class SyncStatusCard extends StatelessWidget {
                 (store.lastBackgroundSyncError?.isNotEmpty ?? false)) ...[
               const SizedBox(height: 6),
               Text(
-                store.syncError ?? store.lastBackgroundSyncError!,
+                _friendlyError(
+                  store.syncError ?? store.lastBackgroundSyncError!,
+                ),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.error,
                   fontSize: 12,
                 ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: store.isSyncing ? null : store.syncWithBackend,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry sync'),
               ),
             ],
           ],
@@ -62,6 +70,17 @@ class SyncStatusCard extends StatelessWidget {
 
   String _stamp(DateTime value) =>
       '${value.day}/${value.month} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+  String _friendlyError(String error) {
+    final normalized = error.toLowerCase();
+    if (normalized.contains('platformexception') ||
+        normalized.contains('exception') ||
+        normalized.contains('stack') ||
+        normalized.length > 140) {
+      return 'A device service could not complete the sync. Check the related permission and try again.';
+    }
+    return 'Sync could not complete. Check your connection and try again.';
+  }
 }
 
 class NotificationSettingsCard extends StatelessWidget {
@@ -154,6 +173,13 @@ class NotificationSettingsCard extends StatelessWidget {
             3,
             8,
             (v) => _save(p.copyWith(sleepThreshold: v)),
+          ),
+          _slider(
+            'Maximum ${p.dailyAlertLimit} wellbeing alerts per day',
+            p.dailyAlertLimit.toDouble(),
+            1,
+            4,
+            (v) => _save(p.copyWith(dailyAlertLimit: v.round())),
           ),
           const Divider(),
           ListTile(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/wellbeing_models.dart';
 import '../../services/lifelens_store.dart';
-import '../../services/notification_service.dart';
 
 class WellbeingCards extends StatelessWidget {
   const WellbeingCards({super.key, required this.store});
@@ -14,75 +13,109 @@ class WellbeingCards extends StatelessWidget {
       _CheckInCard(store: store),
       const SizedBox(height: 12),
       _GoalsCard(store: store),
-      const SizedBox(height: 12),
-      _WeeklyReportCard(store: store),
-      const SizedBox(height: 12),
-      _AchievementsCard(store: store),
-      const SizedBox(height: 12),
-      _RoutineRemindersCard(),
     ],
   );
 }
 
-class _RoutineRemindersCard extends StatelessWidget {
+class RoutineRemindersCard extends StatelessWidget {
+  const RoutineRemindersCard({super.key, required this.store});
+  final LifeLensStore store;
+
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    final p = store.routineReminderPreferences;
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.alarm_outlined),
+        title: const Text(
+          'Smart routine reminders',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: const Text(
+          'Choose only the reminders that help your routine',
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
-          const Row(
-            children: [
-              Icon(Icons.alarm_outlined),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Smart routine reminders',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
-            ],
+          _routineRow(
+            context: context,
+            icon: Icons.bedtime_outlined,
+            title: 'Bedtime',
+            enabled: p.bedtimeEnabled,
+            minutes: p.bedtimeMinutes,
+            onChanged: (value) => store.saveRoutineReminderPreferences(
+              p.copyWith(bedtimeEnabled: value),
+            ),
+            onTimeChanged: (minutes) => store.saveRoutineReminderPreferences(
+              p.copyWith(bedtimeMinutes: minutes),
+            ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Bedtime 10:00 PM • screen break 3:00 PM • budget check 7:00 PM',
+          _routineRow(
+            context: context,
+            icon: Icons.phone_paused_outlined,
+            title: 'Screen break',
+            enabled: p.screenBreakEnabled,
+            minutes: p.screenBreakMinutes,
+            onChanged: (value) => store.saveRoutineReminderPreferences(
+              p.copyWith(screenBreakEnabled: value),
+            ),
+            onTimeChanged: (minutes) => store.saveRoutineReminderPreferences(
+              p.copyWith(screenBreakMinutes: minutes),
+            ),
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton(
-              onPressed: () async {
-                final n = NotificationService();
-                await n.scheduleDailyRoutine(
-                  id: 1,
-                  time: const TimeOfDay(hour: 22, minute: 0),
-                  title: 'Wind down for sleep',
-                  body: 'Start your bedtime routine for tomorrow’s energy.',
-                );
-                await n.scheduleDailyRoutine(
-                  id: 2,
-                  time: const TimeOfDay(hour: 15, minute: 0),
-                  title: 'Screen break',
-                  body: 'Take a 10-minute break away from your phone.',
-                );
-                await n.scheduleDailyRoutine(
-                  id: 3,
-                  time: const TimeOfDay(hour: 19, minute: 0),
-                  title: 'Daily budget check',
-                  body: 'Review today’s spending before the day ends.',
-                );
-                if (context.mounted)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Routine reminders enabled.')),
-                  );
-              },
-              child: const Text('Enable'),
+          _routineRow(
+            context: context,
+            icon: Icons.account_balance_wallet_outlined,
+            title: 'Budget check',
+            enabled: p.budgetCheckEnabled,
+            minutes: p.budgetCheckMinutes,
+            onChanged: (value) => store.saveRoutineReminderPreferences(
+              p.copyWith(budgetCheckEnabled: value),
+            ),
+            onTimeChanged: (minutes) => store.saveRoutineReminderPreferences(
+              p.copyWith(budgetCheckMinutes: minutes),
+            ),
+          ),
+          _routineRow(
+            context: context,
+            icon: Icons.fact_check_outlined,
+            title: 'Daily check-in',
+            enabled: p.checkInEnabled,
+            minutes: p.checkInMinutes,
+            onChanged: (value) => store.saveRoutineReminderPreferences(
+              p.copyWith(checkInEnabled: value),
+            ),
+            onTimeChanged: (minutes) => store.saveRoutineReminderPreferences(
+              p.copyWith(checkInMinutes: minutes),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _routineRow({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required bool enabled,
+    required int minutes,
+    required ValueChanged<bool> onChanged,
+    required ValueChanged<int> onTimeChanged,
+  }) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(icon),
+    title: Text(title),
+    subtitle: Text(
+      TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context),
     ),
+    trailing: Switch.adaptive(value: enabled, onChanged: onChanged),
+    onTap: () async {
+      final selected = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60),
+      );
+      if (selected != null) onTimeChanged(selected.hour * 60 + selected.minute);
+    },
   );
 }
 
@@ -91,7 +124,16 @@ class _CheckInCard extends StatelessWidget {
   final LifeLensStore store;
   @override
   Widget build(BuildContext context) {
-    final hasCheckIn = store.checkIns.isNotEmpty;
+    final now = DateTime.now();
+    final todayCheckIn = store.checkIns
+        .where(
+          (entry) =>
+              entry.date.year == now.year &&
+              entry.date.month == now.month &&
+              entry.date.day == now.day,
+        )
+        .firstOrNull;
+    final hasCheckIn = todayCheckIn != null;
     final scheme = Theme.of(context).colorScheme;
     return Card(
       color: scheme.primaryContainer.withValues(alpha: .48),
@@ -117,14 +159,16 @@ class _CheckInCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      hasCheckIn ? 'Check-in complete' : 'Daily check-in',
+                      hasCheckIn
+                          ? 'Today’s wellbeing snapshot'
+                          : 'Daily wellbeing check-in',
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       hasCheckIn
-                          ? 'Your wellbeing signals are up to date.'
-                          : 'Takes less than a minute.',
+                          ? 'Mood ${todayCheckIn.mood}/5 · Energy ${todayCheckIn.energy}/5 · Stress ${todayCheckIn.stress}/5'
+                          : 'Helps personalise your stress estimate.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -151,52 +195,115 @@ class _CheckInCard extends StatelessWidget {
     final entry = await showDialog<DailyCheckIn>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('How are you feeling?'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'A quick private check-in helps personalise Trends.',
-                ),
-                const SizedBox(height: 16),
-                _rating('Mood', mood, (v) => setState(() => mood = v)),
-                _rating('Energy', energy, (v) => setState(() => energy = v)),
-                _rating('Stress', stress, (v) => setState(() => stress = v)),
-                const SizedBox(height: 4),
-                TextField(
-                  controller: note,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Private note (optional)',
-                    hintText: 'What is affecting your day?',
-                    prefixIcon: Icon(Icons.edit_note_outlined),
-                  ),
-                ),
-              ],
-            ),
+        builder: (ctx, setState) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(
-                ctx,
-                DailyCheckIn(
-                  date: DateTime.now(),
-                  mood: mood,
-                  energy: energy,
-                  stress: stress,
-                  note: note.text.trim(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          height: 44,
+                          width: 44,
+                          decoration: BoxDecoration(
+                            color: Theme.of(ctx).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(Icons.insights_outlined),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'How are you feeling?',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Your one-minute reflection helps LifeLens tailor practical wellbeing guidance for today.',
+                      style: Theme.of(ctx).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 20),
+                    _rating('Mood', mood, const [
+                      'Very low',
+                      'Low',
+                      'Okay',
+                      'Good',
+                      'Great',
+                    ], (v) => setState(() => mood = v)),
+                    _rating('Energy', energy, const [
+                      'Drained',
+                      'Low',
+                      'Steady',
+                      'Good',
+                      'High',
+                    ], (v) => setState(() => energy = v)),
+                    _rating('Stress', stress, const [
+                      'Calm',
+                      'Light',
+                      'Moderate',
+                      'High',
+                      'Very high',
+                    ], (v) => setState(() => stress = v)),
+                    const SizedBox(height: 2),
+                    TextField(
+                      controller: note,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Private note (optional)',
+                        hintText:
+                            'What would you like to remember about today?',
+                        alignLabelWithHint: true,
+                        prefixIcon: Padding(
+                          padding: EdgeInsets.only(bottom: 36),
+                          child: Icon(Icons.edit_note_outlined),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Not now'),
+                        ),
+                        const Spacer(),
+                        FilledButton.icon(
+                          onPressed: () => Navigator.pop(
+                            ctx,
+                            DailyCheckIn(
+                              date: DateTime.now(),
+                              mood: mood,
+                              energy: energy,
+                              stress: stress,
+                              note: note.text.trim(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.check),
+                          label: const Text('Save check-in'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              child: const Text('Save'),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -204,21 +311,34 @@ class _CheckInCard extends StatelessWidget {
     if (entry != null) await store.saveCheckIn(entry);
   }
 
-  Widget _rating(String label, int value, ValueChanged<int> change) => Column(
+  Widget _rating(
+    String label,
+    int value,
+    List<String> labels,
+    ValueChanged<int> change,
+  ) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      const SizedBox(height: 6),
-      Wrap(
-        spacing: 6,
-        children: List.generate(
-          5,
-          (index) => ChoiceChip(
-            label: Text('${index + 1}'),
-            selected: value == index + 1,
-            onSelected: (_) => change(index + 1),
+      Row(
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const Spacer(),
+          Text(
+            labels[value - 1],
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      SegmentedButton<int>(
+        showSelectedIcon: false,
+        segments: List.generate(
+          5,
+          (index) =>
+              ButtonSegment(value: index + 1, label: Text('${index + 1}')),
         ),
+        selected: {value},
+        onSelectionChanged: (selection) => change(selection.first),
       ),
       const SizedBox(height: 14),
     ],
@@ -257,27 +377,22 @@ class _GoalsCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _GoalPill(
-                    icon: Icons.bedtime_outlined,
-                    label: '${goals.sleepHours.toStringAsFixed(1)}h sleep',
-                  ),
-                  _GoalPill(
-                    icon: Icons.directions_walk_outlined,
-                    label: '${goals.steps} steps',
-                  ),
-                  _GoalPill(
-                    icon: Icons.phone_android_outlined,
-                    label: '≤${goals.screenTimeHours.toStringAsFixed(1)}h',
-                  ),
-                  _GoalPill(
-                    icon: Icons.account_balance_wallet_outlined,
-                    label: '₹${goals.monthlyBudget.toStringAsFixed(0)}/mo',
-                  ),
-                ],
+              _GoalRow(
+                icon: Icons.bedtime_outlined,
+                label: 'Sleep',
+                value:
+                    '${store.health.sleepHours.toStringAsFixed(1)} / ${goals.sleepHours.toStringAsFixed(1)} hours',
+              ),
+              _GoalRow(
+                icon: Icons.directions_walk_outlined,
+                label: 'Steps',
+                value: '${store.health.steps} / ${goals.steps}',
+              ),
+              _GoalRow(
+                icon: Icons.phone_android_outlined,
+                label: 'Screen time',
+                value:
+                    '${store.health.screenTimeHours.toStringAsFixed(1)} / ${goals.screenTimeHours.toStringAsFixed(1)} hours',
               ),
             ],
           ),
@@ -291,7 +406,6 @@ class _GoalsCard extends StatelessWidget {
     final sleep = TextEditingController(text: g.sleepHours.toString());
     final steps = TextEditingController(text: g.steps.toString());
     final screen = TextEditingController(text: g.screenTimeHours.toString());
-    final budget = TextEditingController(text: g.monthlyBudget.toString());
     final next = await showDialog<UserGoals>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -321,13 +435,6 @@ class _GoalsCard extends StatelessWidget {
                   labelText: 'Screen-time limit (hours)',
                 ),
               ),
-              TextField(
-                controller: budget,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Monthly spending budget',
-                ),
-              ),
             ],
           ),
         ),
@@ -337,36 +444,59 @@ class _GoalsCard extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              ctx,
-              UserGoals(
-                sleepHours: double.tryParse(sleep.text) ?? g.sleepHours,
-                steps: int.tryParse(steps.text) ?? g.steps,
-                screenTimeHours:
-                    double.tryParse(screen.text) ?? g.screenTimeHours,
-                monthlyBudget: double.tryParse(budget.text) ?? g.monthlyBudget,
-              ),
-            ),
+            onPressed: () {
+              final sleepValue = double.tryParse(sleep.text);
+              final stepsValue = int.tryParse(steps.text);
+              final screenValue = double.tryParse(screen.text);
+              if (sleepValue == null ||
+                  sleepValue <= 0 ||
+                  stepsValue == null ||
+                  stepsValue <= 0 ||
+                  screenValue == null ||
+                  screenValue <= 0) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Use positive values for each goal.'),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(
+                ctx,
+                UserGoals(
+                  sleepHours: sleepValue,
+                  steps: stepsValue,
+                  screenTimeHours: screenValue,
+                  monthlyBudget: g.monthlyBudget,
+                ),
+              );
+            },
             child: const Text('Save'),
           ),
         ],
       ),
     );
-    for (final c in [sleep, steps, screen, budget]) {
+    for (final c in [sleep, steps, screen]) {
       c.dispose();
     }
     if (next != null) await store.saveGoals(next);
   }
 }
 
-class _GoalPill extends StatelessWidget {
-  const _GoalPill({required this.icon, required this.label});
+class _GoalRow extends StatelessWidget {
+  const _GoalRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
   final IconData icon;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
       color: Theme.of(
         context,
@@ -374,12 +504,17 @@ class _GoalPill extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
     ),
     child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [Icon(icon, size: 16), const SizedBox(width: 5), Text(label)],
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label)),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ],
     ),
   );
 }
 
+// ignore: unused_element
 class _WeeklyReportCard extends StatelessWidget {
   const _WeeklyReportCard({required this.store});
   final LifeLensStore store;
@@ -401,12 +536,23 @@ class _WeeklyReportCard extends StatelessWidget {
               spacing: 16,
               runSpacing: 8,
               children: [
-                Text('Sleep ${r.sleepAverage.toStringAsFixed(1)}h'),
-                Text(
-                  'Screen ${r.screenTimeChange >= 0 ? '+' : ''}${r.screenTimeChange.toStringAsFixed(1)}h',
+                _ReportMetric(
+                  label: 'Sleep',
+                  value: '${r.sleepAverage.toStringAsFixed(1)}h',
                 ),
-                Text('Spent ₹${r.spending.toStringAsFixed(0)}'),
-                Text('Tasks ${r.completionRate.toStringAsFixed(0)}%'),
+                _ReportMetric(
+                  label: 'Screen',
+                  value:
+                      '${r.screenTimeChange >= 0 ? '+' : ''}${r.screenTimeChange.toStringAsFixed(1)}h',
+                ),
+                _ReportMetric(
+                  label: 'Spent',
+                  value: '₹${r.spending.toStringAsFixed(0)}',
+                ),
+                _ReportMetric(
+                  label: 'Tasks',
+                  value: '${r.completionRate.toStringAsFixed(0)}%',
+                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -418,26 +564,20 @@ class _WeeklyReportCard extends StatelessWidget {
   }
 }
 
-class _AchievementsCard extends StatelessWidget {
-  const _AchievementsCard({required this.store});
-  final LifeLensStore store;
+class _ReportMetric extends StatelessWidget {
+  const _ReportMetric({required this.label, required this.value});
+  final String label;
+  final String value;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Progress', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Text('🌙 ${store.sleepGoalStreak}-day sleep-goal streak'),
-          Text('📵 ${store.screenTimeGoalStreak}-day screen-time streak'),
-          Text(
-            '✅ ${store.tasks.where((t) => t.isCompleted).length} tasks completed',
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => SizedBox(
+    width: 120,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ],
     ),
   );
 }

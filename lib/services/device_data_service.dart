@@ -58,6 +58,11 @@ class DeviceDataService {
   }
 
   Future<AppUsageSummary> readAppUsage() async {
+    final hasAccess =
+        await _channel.invokeMethod<bool>('hasUsageAccess') ?? false;
+    if (!hasAccess) {
+      throw StateError('Usage Access has not been granted.');
+    }
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
     final usage = await UsageStats.queryUsageStats(start, now);
@@ -74,20 +79,39 @@ class DeviceDataService {
       (total, item) => total + ((item.totalTimeInForegroundMs ?? 0) ~/ 1000),
     );
 
+    final topUsage = filtered.take(12).toList();
+    final packages = topUsage
+        .map((item) => item.packageName ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+    final labels =
+        await _channel.invokeMapMethod<String, dynamic>('resolveAppLabels', {
+          'packages': packages,
+        }) ??
+        {};
+
     return AppUsageSummary(
       totalHours: totalSeconds / 3600,
-      apps: filtered
+      apps: topUsage
+          .where((item) => !_isSystemPackage(item.packageName ?? ''))
           .take(5)
-          .map(
-            (item) => UsedApp(
-              name: item.packageName ?? 'Unknown app',
-              packageName: item.packageName ?? '',
+          .map((item) {
+            final packageName = item.packageName ?? '';
+            return UsedApp(
+              name: labels[packageName]?.toString() ?? 'App activity',
+              packageName: packageName,
               hours: (item.totalTimeInForegroundMs ?? 0) / 3600000,
-            ),
-          )
+            );
+          })
           .toList(),
     );
   }
+
+  bool _isSystemPackage(String packageName) =>
+      packageName.startsWith('com.android.') ||
+      packageName.startsWith('com.sec.android.') ||
+      packageName.startsWith('com.samsung.android.') ||
+      packageName == 'android';
 
   Future<void> openUsageAccessSettings() async {
     await _channel.invokeMethod<void>('openUsageAccessSettings');

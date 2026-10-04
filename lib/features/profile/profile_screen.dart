@@ -3,19 +3,21 @@ import 'package:flutter/material.dart';
 import '../../app/lifelens_app.dart';
 import '../../models/app_user.dart';
 import '../../services/lifelens_store.dart';
-import '../../services/data_portability_service.dart';
-import '../../services/device_data_service.dart';
-import '../../services/notification_service.dart';
+import '../insights/sync_settings_widgets.dart';
+import '../insights/wellbeing_widgets.dart';
+import 'developer_tools.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({
     super.key,
     required this.store,
     required this.onSignOut,
+    required this.onStartWalkthrough,
   });
 
   final LifeLensStore store;
   final VoidCallback onSignOut;
+  final VoidCallback onStartWalkthrough;
 
   @override
   Widget build(BuildContext context) {
@@ -26,8 +28,6 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    final scores = store.calculateScores();
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -101,81 +101,25 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 12),
         _PrivacyCard(store: store),
         const SizedBox(height: 12),
-        _DataPortabilityCard(store: store),
-        const SizedBox(height: 12),
-        const _SettingsSectionLabel(label: 'Connected services'),
-        const SizedBox(height: 8),
-        _PermissionCenterCard(store: store),
-        const SizedBox(height: 12),
-        const _GettingStartedCard(),
-        const SizedBox(height: 12),
         const _SettingsSectionLabel(label: 'App preferences'),
         const SizedBox(height: 8),
-        _SyncQueueCard(store: store),
-        const SizedBox(height: 12),
         const _AppearanceCard(),
         const SizedBox(height: 12),
-        _DemoDataCard(store: store),
+        NotificationSettingsCard(store: store),
+        const SizedBox(height: 12),
+        RoutineRemindersCard(store: store),
         const SizedBox(height: 12),
         Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Today Summary',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _ProfileRow(
-                  label: 'Productivity',
-                  value: '${scores.productivity}/100',
-                ),
-                _ProfileRow(
-                  label: 'Financial health',
-                  value: '${scores.financialHealth}/100',
-                ),
-                _ProfileRow(
-                  label: 'Stress risk',
-                  value: '${scores.stressRisk}/100',
-                ),
-                _ProfileRow(
-                  label: 'Sleep',
-                  value: '${store.health.sleepHours} hrs',
-                ),
-                _ProfileRow(
-                  label: 'Screen time',
-                  value: '${store.health.screenTimeHours} hrs',
-                ),
-              ],
-            ),
+          child: ListTile(
+            leading: const Icon(Icons.tour_outlined),
+            title: const Text('Replay app walkthrough'),
+            subtitle: const Text('Show every feature for a demo'),
+            trailing: const Icon(Icons.play_circle_outline),
+            onTap: onStartWalkthrough,
           ),
         ),
         const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Project Role',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text('Flutter Android UI'),
-                const Text('Manual lifestyle data entry'),
-                const Text('Dashboard and recommendation display'),
-                const Text('Backend API connection readiness'),
-              ],
-            ),
-          ),
-        ),
+        DeveloperTools(store: store),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
@@ -273,284 +217,6 @@ class _SettingsSectionLabel extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _GettingStartedCard extends StatelessWidget {
-  const _GettingStartedCard();
-  @override
-  Widget build(BuildContext context) => Card(
-    child: ExpansionTile(
-      leading: const Icon(Icons.tips_and_updates_outlined),
-      title: const Text(
-        'Getting started',
-        style: TextStyle(fontWeight: FontWeight.w800),
-      ),
-      subtitle: const Text(
-        'Permissions are requested only when you use a feature',
-      ),
-      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      children: const [
-        Text(
-          '1. Add sleep, steps, and screen-time data in Trends.\n\n2. Enable notifications only if you want reminders.\n\n3. Allow usage access only for screen-time insights.\n\n4. Connect Google Calendar only when adding a task event.',
-        ),
-      ],
-    ),
-  );
-}
-
-class _PermissionCenterCard extends StatelessWidget {
-  const _PermissionCenterCard({required this.store});
-  final LifeLensStore store;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Device permissions',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Enable only the integrations you want. Journal notes remain local.',
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.health_and_safety_outlined),
-            title: const Text('Health Connect'),
-            subtitle: Text(
-              store.health.source.contains('health')
-                  ? 'Connected'
-                  : 'Not read yet',
-            ),
-            trailing: Icon(Icons.chevron_right),
-            onTap: () => _health(context),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.phone_android),
-            title: const Text('Usage access'),
-            subtitle: Text(
-              store.appUsage == null
-                  ? 'Not granted or not read'
-                  : 'Last usage read',
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: 'Open usage access settings',
-              onPressed: DeviceDataService().openUsageAccessSettings,
-            ),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Notifications'),
-            subtitle: const Text('Required for task and wellness reminders'),
-            trailing: OutlinedButton(
-              onPressed: NotificationService.requestPermission,
-              child: const Text('Enable'),
-            ),
-          ),
-          const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.calendar_month_outlined),
-            title: Text('Google Calendar'),
-            subtitle: Text(
-              'Permission is requested when you add a task to Calendar',
-            ),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.sync),
-            title: const Text('Background sync'),
-            subtitle: Text(
-              store.backgroundSyncScheduledAt == null
-                  ? 'Not scheduled yet'
-                  : 'Scheduled by Android',
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-  Future<void> _health(BuildContext context) async {
-    try {
-      await store.updateHealth(
-        await DeviceDataService().readHealthConnect(fallback: store.health),
-      );
-      if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Health Connect updated.')),
-        );
-    } catch (_) {
-      if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Health Connect needs permission or supported data.'),
-          ),
-        );
-    }
-  }
-}
-
-class _SyncQueueCard extends StatelessWidget {
-  const _SyncQueueCard({required this.store});
-  final LifeLensStore store;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(
-      leading: const Icon(Icons.cloud_upload_outlined),
-      title: const Text('Offline sync queue'),
-      subtitle: Text(
-        '${store.pendingSyncItems.length} pending change${store.pendingSyncItems.length == 1 ? '' : 's'}',
-      ),
-      trailing: OutlinedButton(
-        onPressed: store.pendingSyncItems.isEmpty
-            ? null
-            : store.retryPendingSync,
-        child: const Text('Retry'),
-      ),
-    ),
-  );
-}
-
-class _DataPortabilityCard extends StatelessWidget {
-  const _DataPortabilityCard({required this.store});
-  final LifeLensStore store;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Your data',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Exports are encrypted with your passphrase (AES-256-GCM). Keep that passphrase safe; it cannot be recovered.',
-          ),
-          Wrap(
-            spacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => _export(context),
-                icon: const Icon(Icons.ios_share),
-                label: const Text('Export'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _import(context),
-                icon: const Icon(Icons.file_download_outlined),
-                label: const Text('Import'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-  Future<void> _export(BuildContext context) async {
-    final passphrase = await _askPassphrase(context, title: 'Encrypt export');
-    if (passphrase == null) return;
-    try {
-      await DataPortabilityService().shareExport(store, passphrase);
-    } on FormatException catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
-      }
-    }
-  }
-
-  Future<String?> _askPassphrase(
-    BuildContext context, {
-    required String title,
-  }) async {
-    final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Passphrase (12+ characters)',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return value;
-  }
-
-  Future<void> _import(BuildContext context) async {
-    final controller = TextEditingController();
-    final raw = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Import LifeLens JSON'),
-        content: TextField(
-          controller: controller,
-          maxLines: 8,
-          decoration: const InputDecoration(hintText: 'Paste an export here'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (raw == null || raw.trim().isEmpty) return;
-    final passphrase = await _askPassphrase(context, title: 'Decrypt import');
-    if (passphrase == null) return;
-    try {
-      await DataPortabilityService().importCheckInsAndGoals(
-        store,
-        raw,
-        passphrase,
-      );
-      if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Goals and check-ins imported.')),
-        );
-    } catch (_) {
-      if (context.mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Import failed. Check the encrypted export and passphrase.',
-            ),
-          ),
-        );
-    }
-  }
 }
 
 class _AppearanceCard extends StatelessWidget {
@@ -698,83 +364,6 @@ class _PrivacyBullet extends StatelessWidget {
   }
 }
 
-class _DemoDataCard extends StatelessWidget {
-  const _DemoDataCard({required this.store});
-
-  final LifeLensStore store;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.play_circle_outline,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Demo Data',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Load a clear scenario before your presentation.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _loadDemo(context, highRisk: false),
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('Balanced'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _loadDemo(context, highRisk: true),
-                    icon: const Icon(Icons.warning_amber_rounded),
-                    label: const Text('High Risk'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _loadDemo(BuildContext context, {required bool highRisk}) async {
-    await store.loadDemoData(highRisk: highRisk);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            highRisk ? 'High-risk demo loaded' : 'Balanced demo loaded',
-          ),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-}
-
 class _FinanceProfileCard extends StatelessWidget {
   const _FinanceProfileCard({required this.store});
 
@@ -812,13 +401,13 @@ class _FinanceProfileCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             _ProfileRow(
-              label: 'Monthly income',
+              label: 'Income / allowance',
               value: monthlyIncome == null
                   ? 'Not set'
                   : 'Rs ${monthlyIncome.toStringAsFixed(0)}',
             ),
             _ProfileRow(
-              label: 'Monthly budget',
+              label: 'Spending budget',
               value: monthlyBudget == null
                   ? 'Auto from income'
                   : 'Rs ${monthlyBudget.toStringAsFixed(0)}',
@@ -844,7 +433,7 @@ class _FinanceProfileCard extends StatelessWidget {
   Future<void> _showFinanceDialog(BuildContext context) async {
     final updatedUser = await showDialog<AppUser>(
       context: context,
-      builder: (context) => _EditProfileDialog(user: store.user),
+      builder: (context) => _EditFinanceDialog(user: store.user),
     );
     if (updatedUser == null) return;
     await store.updateUserProfile(updatedUser);
@@ -872,26 +461,16 @@ class _EditProfileDialog extends StatefulWidget {
 class _EditProfileDialogState extends State<_EditProfileDialog> {
   final formKey = GlobalKey<FormState>();
   late final TextEditingController nameController;
-  late final TextEditingController incomeController;
-  late final TextEditingController budgetController;
 
   @override
   void initState() {
     super.initState();
     nameController = TextEditingController(text: widget.user.name);
-    incomeController = TextEditingController(
-      text: widget.user.monthlyIncome?.toStringAsFixed(0) ?? '',
-    );
-    budgetController = TextEditingController(
-      text: widget.user.monthlyBudget?.toStringAsFixed(0) ?? '',
-    );
   }
 
   @override
   void dispose() {
     nameController.dispose();
-    incomeController.dispose();
-    budgetController.dispose();
     super.dispose();
   }
 
@@ -926,30 +505,6 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
                   prefixIcon: Icon(Icons.email_outlined),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: incomeController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Monthly income or allowance (optional)',
-                  prefixIcon: Icon(Icons.payments_outlined),
-                ),
-                validator: _optionalMoneyValidator,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: budgetController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Monthly spending budget (optional)',
-                  prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                ),
-                validator: _optionalMoneyValidator,
-              ),
             ],
           ),
         ),
@@ -964,13 +519,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
             if (!formKey.currentState!.validate()) return;
             Navigator.pop(
               context,
-              widget.user.copyWith(
-                name: nameController.text.trim(),
-                monthlyIncome: _parseOptionalMoney(incomeController.text),
-                monthlyBudget: _parseOptionalMoney(budgetController.text),
-                clearMonthlyIncome: incomeController.text.trim().isEmpty,
-                clearMonthlyBudget: budgetController.text.trim().isEmpty,
-              ),
+              widget.user.copyWith(name: nameController.text.trim()),
             );
           },
           child: const Text('Save'),
@@ -978,6 +527,92 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
       ],
     );
   }
+}
+
+class _EditFinanceDialog extends StatefulWidget {
+  const _EditFinanceDialog({required this.user});
+  final AppUser user;
+
+  @override
+  State<_EditFinanceDialog> createState() => _EditFinanceDialogState();
+}
+
+class _EditFinanceDialogState extends State<_EditFinanceDialog> {
+  final formKey = GlobalKey<FormState>();
+  late final incomeController = TextEditingController(
+    text: widget.user.monthlyIncome?.toStringAsFixed(0) ?? '',
+  );
+  late final budgetController = TextEditingController(
+    text: widget.user.monthlyBudget?.toStringAsFixed(0) ?? '',
+  );
+
+  @override
+  void dispose() {
+    incomeController.dispose();
+    budgetController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Finance profile'),
+    content: SingleChildScrollView(
+      child: Form(
+        key: formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: incomeController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Income or allowance',
+                hintText: 'Optional monthly amount',
+                prefixIcon: Icon(Icons.payments_outlined),
+              ),
+              validator: _optionalMoneyValidator,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: budgetController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Monthly spending budget',
+                hintText: 'Optional monthly limit',
+                prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+              ),
+              validator: _optionalMoneyValidator,
+            ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (!formKey.currentState!.validate()) return;
+          Navigator.pop(
+            context,
+            widget.user.copyWith(
+              monthlyIncome: _parseOptionalMoney(incomeController.text),
+              monthlyBudget: _parseOptionalMoney(budgetController.text),
+              clearMonthlyIncome: incomeController.text.trim().isEmpty,
+              clearMonthlyBudget: budgetController.text.trim().isEmpty,
+            ),
+          );
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  );
 }
 
 class _ProfileRow extends StatelessWidget {

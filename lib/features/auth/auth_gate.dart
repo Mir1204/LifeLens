@@ -43,7 +43,11 @@ class _AuthGateState extends State<AuthGate> {
           return LoginScreen(onAuthenticated: _setUser);
         }
 
-        return DashboardScreen(user: user, onSignOut: _signOut);
+        return _OnboardingGate(
+          user: user,
+          authService: authService,
+          onSignOut: _signOut,
+        );
       },
     );
   }
@@ -61,4 +65,53 @@ class _AuthGateState extends State<AuthGate> {
       userFuture = Future.value(null);
     });
   }
+}
+
+class _OnboardingGate extends StatefulWidget {
+  const _OnboardingGate({
+    required this.user,
+    required this.authService,
+    required this.onSignOut,
+  });
+
+  final AppUser user;
+  final AuthService authService;
+  final VoidCallback onSignOut;
+
+  @override
+  State<_OnboardingGate> createState() => _OnboardingGateState();
+}
+
+class _OnboardingGateState extends State<_OnboardingGate> {
+  late Future<bool> _completed = _readCompletion();
+
+  Future<bool> _readCompletion() async =>
+      await widget.authService.database.setting(
+        'onboarding_${widget.user.userId}',
+      ) ==
+      'true';
+
+  Future<void> _finish() async {
+    await widget.authService.database.saveSetting(
+      'onboarding_${widget.user.userId}',
+      'true',
+    );
+    if (mounted) setState(() => _completed = Future.value(true));
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<bool>(
+    future: _completed,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Scaffold(body: SizedBox.expand());
+      }
+      return DashboardScreen(
+        user: widget.user,
+        onSignOut: widget.onSignOut,
+        startFeatureTour: snapshot.data != true,
+        onFeatureTourComplete: _finish,
+      );
+    },
+  );
 }

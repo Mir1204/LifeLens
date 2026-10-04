@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../models/app_usage_summary.dart';
 import '../models/app_user.dart';
@@ -30,6 +30,7 @@ class LifeLensStore extends ChangeNotifier {
   LifestyleScores? remoteScores;
   AppUsageSummary? appUsage;
   List<ScoreSnapshot> scoreHistory = [];
+  List<ScoreSnapshot> weeklyScoreHistory = [];
   String backendUrl = defaultBackendUrl;
   bool isLoading = true;
   bool isSyncing = false;
@@ -44,6 +45,8 @@ class LifeLensStore extends ChangeNotifier {
   String? lastBackgroundSyncError;
   NotificationPreferences notificationPreferences =
       const NotificationPreferences();
+  RoutineReminderPreferences routineReminderPreferences =
+      const RoutineReminderPreferences();
   Timer? _connectivityTimer;
   Timer? _deviceRefreshTimer;
   final DeviceDataService _deviceDataService = DeviceDataService();
@@ -105,12 +108,43 @@ class LifeLensStore extends ChangeNotifier {
             await database.setting('notify_sleep_threshold') ?? '',
           ) ??
           6,
+      dailyAlertLimit:
+          int.tryParse(
+            await database.setting('notify_daily_alert_limit') ?? '',
+          ) ??
+          2,
       quietStartMinutes: int.tryParse(
         await database.setting('notify_quiet_start') ?? '',
       ),
       quietEndMinutes: int.tryParse(
         await database.setting('notify_quiet_end') ?? '',
       ),
+    );
+    routineReminderPreferences = RoutineReminderPreferences(
+      bedtimeEnabled:
+          (await database.setting('routine_bedtime_enabled')) == 'true',
+      screenBreakEnabled:
+          (await database.setting('routine_screen_break_enabled')) == 'true',
+      budgetCheckEnabled:
+          (await database.setting('routine_budget_check_enabled')) == 'true',
+      checkInEnabled:
+          (await database.setting('routine_check_in_enabled')) == 'true',
+      bedtimeMinutes:
+          int.tryParse(await database.setting('routine_bedtime_time') ?? '') ??
+          1320,
+      screenBreakMinutes:
+          int.tryParse(
+            await database.setting('routine_screen_break_time') ?? '',
+          ) ??
+          900,
+      budgetCheckMinutes:
+          int.tryParse(
+            await database.setting('routine_budget_check_time') ?? '',
+          ) ??
+          1140,
+      checkInMinutes:
+          int.tryParse(await database.setting('routine_check_in_time') ?? '') ??
+          1200,
     );
     lastBackgroundSyncedAt = DateTime.tryParse(
       await database.setting('background_sync_last_at') ?? '',
@@ -122,6 +156,8 @@ class LifeLensStore extends ChangeNotifier {
       'background_sync_last_error',
     );
 
+    await database.purgeCompletedTasksOlderThanOneMonth(user.userId);
+    await database.purgeExpensesOlderThan31Days(user.userId);
     final loadedExpenses = await database.expenses(user.userId);
     final loadedTasks = await database.tasks(user.userId);
     final latestHealth = await database.latestHealth(user.userId);
@@ -139,6 +175,7 @@ class LifeLensStore extends ChangeNotifier {
     if (latestHealth != null) health = latestHealth;
     appUsage = latestAppUsage;
     scoreHistory = loadedScores;
+    weeklyScoreHistory = loadedScores;
     checkIns = loadedCheckIns;
     pendingSyncItems = pendingItems;
     customExpenseCategories = _savedStringList(
@@ -168,6 +205,11 @@ class LifeLensStore extends ChangeNotifier {
     _autoFetchHealthData();
     _startDeviceRefreshLoop();
     _startConnectivityLoop();
+  }
+
+  Future<void> loadScoreHistory(int days) async {
+    scoreHistory = await database.scoreHistory(user.userId, days);
+    notifyListeners();
   }
 
   List<String> _savedStringList(String? raw) {
@@ -300,6 +342,12 @@ class LifeLensStore extends ChangeNotifier {
 
   Future<void> addExpense(ExpenseEntry entry, {bool showAlerts = true}) async {
     remoteScores = null;
+    await database.purgeExpensesOlderThan31Days(user.userId);
+    expenses.removeWhere(
+      (expense) => expense.date.isBefore(
+        DateTime.now().subtract(const Duration(days: 31)),
+      ),
+    );
     final id = await database.insertExpense(user.userId, entry);
     expenses.insert(0, entry.copyWith(id: id));
     await recordLocalScoreSnapshot();
@@ -434,22 +482,17 @@ class LifeLensStore extends ChangeNotifier {
     final updated = entry.copyWith(isCompleted: !entry.isCompleted);
     tasks[index] = updated;
     await database.toggleTaskComplete(entry.id!, done: updated.isCompleted);
+    if (updated.isCompleted) {
+      await notificationService.cancelTaskReminder(entry.id!);
+    } else if (updated.reminderMinutes != null) {
+      await _scheduleTaskReminder(updated);
+    }
     if (updated.googleCalendarEventId != null) {
       try {
         await _googleCalendarService.updateTaskCompletion(updated);
       } catch (error) {
         debugPrint('Calendar completion update failed: $error');
       }
-    }
-    // Auto-delete completed task after a delay (15 seconds)
-    if (updated.isCompleted) {
-      Timer(const Duration(seconds: 15), () async {
-        // Verify task still exists and is completed before deleting
-        final matches = tasks.where((t) => t.id == updated.id && t.isCompleted);
-        if (matches.isNotEmpty) {
-          await deleteTask(matches.first);
-        }
-      });
     }
     notifyListeners();
   }
@@ -582,6 +625,10 @@ class LifeLensStore extends ChangeNotifier {
         value.sleepThreshold.toString(),
       ),
       database.saveSetting(
+        'notify_daily_alert_limit',
+        value.dailyAlertLimit.toString(),
+      ),
+      database.saveSetting(
         'notify_quiet_start',
         value.quietStartMinutes?.toString() ?? '',
       ),
@@ -591,6 +638,93 @@ class LifeLensStore extends ChangeNotifier {
       ),
     ]);
     notifyListeners();
+  }
+
+  Future<void> saveRoutineReminderPreferences(
+    RoutineReminderPreferences value,
+  ) async {
+    routineReminderPreferences = value;
+    await Future.wait([
+      database.saveSetting(
+        'routine_bedtime_enabled',
+        value.bedtimeEnabled.toString(),
+      ),
+      database.saveSetting(
+        'routine_screen_break_enabled',
+        value.screenBreakEnabled.toString(),
+      ),
+      database.saveSetting(
+        'routine_budget_check_enabled',
+        value.budgetCheckEnabled.toString(),
+      ),
+      database.saveSetting(
+        'routine_check_in_enabled',
+        value.checkInEnabled.toString(),
+      ),
+      database.saveSetting(
+        'routine_bedtime_time',
+        value.bedtimeMinutes.toString(),
+      ),
+      database.saveSetting(
+        'routine_screen_break_time',
+        value.screenBreakMinutes.toString(),
+      ),
+      database.saveSetting(
+        'routine_budget_check_time',
+        value.budgetCheckMinutes.toString(),
+      ),
+      database.saveSetting(
+        'routine_check_in_time',
+        value.checkInMinutes.toString(),
+      ),
+    ]);
+    await _applyRoutineReminders(value);
+    notifyListeners();
+  }
+
+  Future<void> _applyRoutineReminders(RoutineReminderPreferences value) async {
+    const routines = [
+      (
+        1,
+        'Wind down for sleep',
+        'Start your bedtime routine for tomorrow’s energy.',
+      ),
+      (2, 'Screen break', 'Take a 10-minute break away from your phone.'),
+      (3, 'Daily budget check', 'Review today’s spending before the day ends.'),
+      (
+        4,
+        'Daily check-in',
+        'Take one minute to reflect on how you are feeling.',
+      ),
+    ];
+    final enabled = [
+      value.bedtimeEnabled,
+      value.screenBreakEnabled,
+      value.budgetCheckEnabled,
+      value.checkInEnabled,
+    ];
+    final minutes = [
+      value.bedtimeMinutes,
+      value.screenBreakMinutes,
+      value.budgetCheckMinutes,
+      value.checkInMinutes,
+    ];
+    for (var index = 0; index < routines.length; index++) {
+      final routine = routines[index];
+      if (!enabled[index]) {
+        await notificationService.cancelDailyRoutine(routine.$1);
+        continue;
+      }
+      await notificationService.scheduleDailyRoutine(
+        id: routine.$1,
+        time: TimeOfDay(
+          hour: minutes[index] ~/ 60,
+          minute: minutes[index] % 60,
+        ),
+        title: routine.$2,
+        body: routine.$3,
+      );
+    }
   }
 
   Future<void> saveCheckIn(DailyCheckIn value) async {
@@ -663,7 +797,7 @@ class LifeLensStore extends ChangeNotifier {
   }
 
   WeeklyReport get weeklyReport {
-    final history = scoreHistory;
+    final history = weeklyScoreHistory;
     final sleep = history.isEmpty
         ? health.sleepHours
         : history.map((x) => x.sleepHours).reduce((a, b) => a + b) /
@@ -755,71 +889,178 @@ class LifeLensStore extends ChangeNotifier {
   }
 
   Future<void> loadDemoData({required bool highRisk}) async {
+    await clearDemoData(notify: false);
     remoteScores = null;
     final now = DateTime.now();
-
+    final days = [
+      for (var i = 29; i >= 0; i--) now.subtract(Duration(days: i)),
+    ];
+    await database.saveSetting(
+      'demo_dates_${user.userId}',
+      jsonEncode(days.map((day) => day.toIso8601String()).toList()),
+    );
+    for (var index = 0; index < days.length; index++) {
+      final day = days[index];
+      final healthEntry = DailyHealthEntry(
+        date: day,
+        sleepHours: highRisk ? 6.7 - index * .065 : 7.2 + (index % 4) * .16,
+        steps: highRisk ? 6200 - index * 115 : 7200 + (index % 5) * 460,
+        screenTimeHours: highRisk ? 4.8 + index * .12 : 4.6 - (index % 3) * .22,
+        source: 'demo',
+      );
+      final spending = highRisk ? 180 + index * 18.0 : 105 + (index % 4) * 22.0;
+      final workload = highRisk ? 2 + index ~/ 7 : 1 + index % 3;
+      await database.insertHealth(user.userId, healthEntry);
+      await database.insertExpense(
+        user.userId,
+        ExpenseEntry(
+          amount: spending,
+          category: highRisk && index > 20 ? 'Shopping' : 'Food',
+          date: day,
+          note: 'Demo: ${highRisk ? 'high-risk' : 'balanced'} day',
+        ),
+      );
+      final scores = LifestyleScores(
+        date: day,
+        productivity: (highRisk ? 78 - index : 72 + index ~/ 2)
+            .clamp(25, 92)
+            .toInt(),
+        financialHealth: (highRisk ? 88 - index * 2 : 80 + index ~/ 3)
+            .clamp(28, 95)
+            .toInt(),
+        stressRisk: (highRisk ? 28 + index * 2 : 36 - index ~/ 4)
+            .clamp(18, 92)
+            .toInt(),
+        burnoutRisk: highRisk && index > 20
+            ? 'High'
+            : highRisk
+            ? 'Medium'
+            : 'Low',
+        overspendingRisk: highRisk && index > 18 ? 'High' : 'Low',
+        recommendations: const [],
+      );
+      await database.upsertDailyEntry(
+        userId: user.userId,
+        health: healthEntry,
+        dailySpending: spending,
+        calendarEvents: 0,
+        highPriorityTasks: highRisk && index > 20 ? 2 : 0,
+        totalWorkload: workload,
+      );
+      await database.insertScoreSnapshot(
+        userId: user.userId,
+        scores: scores,
+        spending: spending,
+        sleepHours: healthEntry.sleepHours,
+        screenTimeHours: healthEntry.screenTimeHours,
+        totalWorkload: workload,
+      );
+      if (index % 5 == 0) {
+        await database.saveCheckIn(
+          user.userId,
+          DailyCheckIn(
+            date: day,
+            mood: highRisk ? 2 : 4,
+            energy: highRisk ? 2 : 4,
+            stress: highRisk ? 4 : 2,
+            note: 'Demo wellbeing check-in',
+          ),
+        );
+      }
+    }
+    await database.insertTask(
+      user.userId,
+      PlannerEntry(
+        title:
+            'Demo: ${highRisk ? 'Finish urgent project review' : 'Review weekly plan'}',
+        date: now,
+        priority: highRisk ? TaskPriority.high : TaskPriority.medium,
+        workload: highRisk ? 5 : 2,
+      ),
+    );
+    await database.insertTask(
+      user.userId,
+      PlannerEntry(
+        title:
+            'Demo: ${highRisk ? 'Prepare urgent presentation' : 'Plan tomorrow'}',
+        date: now.add(const Duration(days: 1)),
+        priority: highRisk ? TaskPriority.high : TaskPriority.low,
+        workload: highRisk ? 5 : 1,
+      ),
+    );
+    final completedTaskId = await database.insertTask(
+      user.userId,
+      PlannerEntry(
+        title:
+            'Demo: ${highRisk ? 'Submit delayed report' : 'Complete morning routine'}',
+        date: now.subtract(const Duration(days: 1)),
+        priority: highRisk ? TaskPriority.high : TaskPriority.low,
+        workload: highRisk ? 5 : 1,
+      ),
+    );
+    await database.toggleTaskComplete(completedTaskId, done: true);
+    // A completed-task history makes the 30-day task view meaningful in both
+    // demo scenarios, while remaining within the app's one-month retention.
+    for (var offset = 4; offset <= 28; offset += 4) {
+      final completedId = await database.insertTask(
+        user.userId,
+        PlannerEntry(
+          title:
+              'Demo: ${highRisk ? 'Resolve project follow-up' : 'Complete planned habit'}',
+          date: now.subtract(Duration(days: offset)),
+          priority: highRisk ? TaskPriority.high : TaskPriority.medium,
+          workload: highRisk ? 4 : 2,
+        ),
+      );
+      await database.toggleTaskComplete(completedId, done: true);
+    }
     health = DailyHealthEntry(
+      date: now,
       sleepHours: highRisk ? 4.8 : 7.6,
       steps: highRisk ? 1800 : 9200,
       screenTimeHours: highRisk ? 8.4 : 3.2,
       source: 'demo',
     );
-    await database.insertHealth(user.userId, health);
-
-    if (highRisk) {
-      await addExpense(
-        ExpenseEntry(
-          amount: 950,
-          category: 'Shopping',
-          date: now,
-          note: 'Demo spike',
-          recurringLabel: null,
+    appUsage = AppUsageSummary(
+      totalHours: health.screenTimeHours,
+      apps: [
+        UsedApp(
+          name: highRisk ? 'Instagram' : 'Google Chrome',
+          packageName: highRisk
+              ? 'com.instagram.android'
+              : 'com.android.chrome',
+          hours: highRisk ? 3.2 : 1.1,
         ),
-        showAlerts: false,
-      );
-      await addTask(
-        PlannerEntry(
-          title: 'Finish urgent project review',
-          date: now,
-          priority: TaskPriority.high,
-          workload: 5,
-        ),
-        showAlerts: false,
-      );
-      await addTask(
-        PlannerEntry(
-          title: 'Prepare presentation changes',
-          date: now,
-          priority: TaskPriority.high,
-          workload: 4,
-        ),
-        showAlerts: false,
-      );
-    } else {
-      await addExpense(
-        ExpenseEntry(
-          amount: 120,
-          category: 'Food',
-          date: now,
-          note: 'Demo balanced day',
-          recurringLabel: 'Snacks',
-        ),
-        showAlerts: false,
-      );
-      await addTask(
-        PlannerEntry(
-          title: 'Review notes calmly',
-          date: now,
-          priority: TaskPriority.medium,
-          workload: 2,
-        ),
-        showAlerts: false,
-      );
-    }
-
-    await recordLocalScoreSnapshot();
-    await _persistDailyEntry();
+      ],
+      updatedAt: now,
+    );
+    expenses
+      ..clear()
+      ..addAll(await database.expenses(user.userId));
+    tasks
+      ..clear()
+      ..addAll(await database.tasks(user.userId));
+    scoreHistory = await database.scoreHistory(user.userId, 30);
+    checkIns = await database.checkIns(user.userId, days: 30);
     notifyListeners();
+  }
+
+  Future<void> clearDemoData({bool notify = true}) async {
+    final raw = await database.setting('demo_dates_${user.userId}');
+    final dates = _savedStringList(
+      raw,
+    ).map(DateTime.tryParse).whereType<DateTime>().toList();
+    await database.deleteDemoRecords(user.userId, dates);
+    await database.saveSetting('demo_dates_${user.userId}', '[]');
+    appUsage = null;
+    expenses
+      ..clear()
+      ..addAll(await database.expenses(user.userId));
+    tasks
+      ..clear()
+      ..addAll(await database.tasks(user.userId));
+    scoreHistory = await database.scoreHistory(user.userId, 30);
+    if (notify) notifyListeners();
   }
 
   Future<void> recordLocalScoreSnapshot() async {
@@ -835,7 +1076,8 @@ class LifeLensStore extends ChangeNotifier {
       screenTimeHours: health.screenTimeHours,
       totalWorkload: totalWorkload,
     );
-    scoreHistory = await database.scoreHistory(user.userId, 7);
+    weeklyScoreHistory = await database.scoreHistory(user.userId, 7);
+    scoreHistory = weeklyScoreHistory;
   }
 
   List<String> get predictionExplanations {
@@ -859,7 +1101,7 @@ class LifeLensStore extends ChangeNotifier {
       final workloadChange = totalWorkload - previous.totalWorkload;
       if (workloadChange >= 1) {
         explanations.add(
-          'Planned workload increased by $workloadChange point${workloadChange == 1 ? '' : 's'}.',
+          'Your planned task load increased by $workloadChange workload units (Low = 1, Medium = 3, High = 5).',
         );
       }
       final screenChange = health.screenTimeHours - previous.screenTimeHours;
@@ -920,7 +1162,11 @@ class LifeLensStore extends ChangeNotifier {
         '${health.date.year.toString().padLeft(4, '0')}-${health.date.month.toString().padLeft(2, '0')}-${health.date.day.toString().padLeft(2, '0')}';
     final key = 'risk_alert_${user.userId}_${alertType}_$day';
     if (await database.setting(key) == 'sent') return false;
+    final countKey = 'risk_alert_count_${user.userId}_$day';
+    final count = int.tryParse(await database.setting(countKey) ?? '') ?? 0;
+    if (count >= notificationPreferences.dailyAlertLimit) return false;
     await database.saveSetting(key, 'sent');
+    await database.saveSetting(countKey, (count + 1).toString());
     return true;
   }
 
@@ -1045,7 +1291,14 @@ class LifeLensStore extends ChangeNotifier {
       items.add('Sleep is below target. Try a fixed sleep time tonight.');
     }
     if (health.screenTimeHours > 6) {
-      items.add('Screen time is high. Reduce late-night phone usage.');
+      final topApp = appUsage?.apps.isNotEmpty == true
+          ? appUsage!.apps.first.name
+          : null;
+      items.add(
+        topApp == null
+            ? 'Screen time is high. Take a short phone-free break.'
+            : 'Screen time is high. Try reducing $topApp by 15 minutes today.',
+      );
     }
     if (financialHealth < 70) {
       final dailyBudget = dailySpendingBudget;

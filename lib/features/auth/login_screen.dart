@@ -17,7 +17,7 @@ class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final authService = AuthService();
   final formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController(text: 'Mir Patel');
+  final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool isSignup = false;
@@ -222,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                                 validator: (value) =>
                                     value == null || value.length < 4
-                                    ? 'Use at least 4 characters'
+                                    ? 'Use at least 8 characters'
                                     : null,
                               ),
                               if (errorText != null) ...[
@@ -307,6 +307,17 @@ class _LoginScreenState extends State<LoginScreen>
                                   isSignup
                                       ? 'Already have an account? Sign in'
                                       : "Don't have an account? Create one",
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Your journal notes and raw app usage stay on your device.',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  height: 1.4,
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: .58),
                                 ),
                               ),
                             ],

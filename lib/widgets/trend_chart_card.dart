@@ -24,6 +24,9 @@ class TrendChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lineColor = Theme.of(context).brightness == Brightness.dark
+        ? color.withRed(110).withGreen(210).withBlue(255)
+        : color;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -43,7 +46,10 @@ class TrendChartCard extends StatelessWidget {
                 if (points.isNotEmpty)
                   Text(
                     '${points.last.value.toStringAsFixed(1)}$suffix',
-                    style: TextStyle(color: color, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      color: lineColor,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
               ],
             ),
@@ -102,34 +108,94 @@ class TrendChartCard extends StatelessWidget {
                         strokeWidth: 1,
                       ),
                     ),
-                    titlesData: const FlTitlesData(
+                    titlesData: FlTitlesData(
                       leftTitles: AxisTitles(
+                        axisNameWidget: Text(
+                          'Hours',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 32,
+                          getTitlesWidget: (value, meta) => Text(
+                            value.toStringAsFixed(0),
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        ),
+                      ),
+                      rightTitles: const AxisTitles(
                         sideTitles: SideTitles(showTitles: false),
                       ),
-                      rightTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      topTitles: AxisTitles(
+                      topTitles: const AxisTitles(
                         sideTitles: SideTitles(showTitles: false),
                       ),
                       bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
+                        axisNameWidget: Text(
+                          'Day',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          interval: points.length > 10 ? 5 : 1,
+                          getTitlesWidget: (value, meta) {
+                            final index = value.round();
+                            if (index < 0 || index >= points.length)
+                              return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                points[index].label,
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                     borderData: FlBorderData(show: false),
+                    lineTouchData: LineTouchData(
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipColor: (_) =>
+                            Theme.of(context).colorScheme.inverseSurface,
+                        getTooltipItems: (spots) => spots
+                            .map(
+                              (spot) => LineTooltipItem(
+                                '${points[spot.x.round()].label}\n${spot.y.toStringAsFixed(1)}$suffix',
+                                TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onInverseSurface,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
                     lineBarsData: [
                       LineChartBarData(
                         spots: [
                           for (var i = 0; i < points.length; i++)
                             FlSpot(i.toDouble(), points[i].value),
                         ],
-                        isCurved: true,
+                        isCurved: points.length <= 10,
                         barWidth: 3,
-                        color: color,
-                        dotData: const FlDotData(show: false),
+                        color: lineColor,
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, percent, bar, index) =>
+                              FlDotCirclePainter(
+                                radius: 3,
+                                color: lineColor,
+                                strokeWidth: 1.5,
+                                strokeColor: Theme.of(
+                                  context,
+                                ).colorScheme.surface,
+                              ),
+                        ),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: color.withValues(alpha: .12),
+                          color: lineColor.withValues(alpha: .18),
                         ),
                       ),
                     ],

@@ -191,6 +191,11 @@ class BackgroundSyncService {
                 await database.setting('notify_sleep_threshold') ?? '',
               ) ??
               6,
+          dailyAlertLimit:
+              int.tryParse(
+                await database.setting('notify_daily_alert_limit') ?? '',
+              ) ??
+              2,
           quietStartMinutes: int.tryParse(
             await database.setting('notify_quiet_start') ?? '',
           ),
@@ -202,7 +207,17 @@ class BackgroundSyncService {
           final day = health.date.toIso8601String().substring(0, 10);
           final key = 'risk_alert_${user.userId}_${type}_$day';
           if (await database.setting(key) == 'sent') return false;
+          final countKey = 'risk_alert_count_${user.userId}_$day';
+          final count =
+              int.tryParse(await database.setting(countKey) ?? '') ?? 0;
+          final limit =
+              int.tryParse(
+                await database.setting('notify_daily_alert_limit') ?? '',
+              ) ??
+              2;
+          if (count >= limit) return false;
           await database.saveSetting(key, 'sent');
+          await database.saveSetting(countKey, (count + 1).toString());
           return true;
         },
       );

@@ -19,6 +19,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   final noteController = TextEditingController();
   String category = 'Food';
   String recurringLabel = 'None';
+  DateTime expenseDate = DateTime.now();
+  bool showAddForm = false;
+  bool showAllExpenses = false;
 
   static const _addCategoryOption = '+ Add category';
   static const _addRecurringOption = '+ Add recurring label';
@@ -68,32 +71,54 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         const SizedBox(height: 12),
         _CategoryInsightCard(message: _categoryInsight()),
         const SizedBox(height: 12),
-        _ExpenseForm(
-          formKey: _formKey,
-          amountController: amountController,
-          noteController: noteController,
-          category: category,
-          recurringLabel: recurringLabel,
-          categories: [..._categories, ...widget.store.customExpenseCategories],
-          recurringLabels: _recurringLabelsFor(category),
-          onCategoryChanged: (value) {
-            if (value == _addCategoryOption) {
-              _addCategory();
-              return;
-            }
-            setState(() {
-              category = value;
-              recurringLabel = 'None';
-            });
-          },
-          onRecurringChanged: (value) {
-            if (value == _addRecurringOption) {
-              _addRecurringLabel();
-              return;
-            }
-            setState(() => recurringLabel = value);
-          },
-          onSave: _saveExpense,
+        Card(
+          child: ExpansionTile(
+            initiallyExpanded: showAddForm,
+            onExpansionChanged: (value) => setState(() => showAddForm = value),
+            leading: const Icon(Icons.add_card_outlined),
+            title: const Text(
+              'Add expense',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: const Text(
+              'Record a purchase now or for an earlier date',
+            ),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              _ExpenseForm(
+                formKey: _formKey,
+                amountController: amountController,
+                noteController: noteController,
+                category: category,
+                recurringLabel: recurringLabel,
+                date: expenseDate,
+                categories: [
+                  ..._categories,
+                  ...widget.store.customExpenseCategories,
+                ],
+                recurringLabels: _recurringLabelsFor(category),
+                onDateTap: _pickExpenseDate,
+                onCategoryChanged: (value) {
+                  if (value == _addCategoryOption) {
+                    _addCategory();
+                    return;
+                  }
+                  setState(() {
+                    category = value;
+                    recurringLabel = 'None';
+                  });
+                },
+                onRecurringChanged: (value) {
+                  if (value == _addRecurringOption) {
+                    _addRecurringLabel();
+                    return;
+                  }
+                  setState(() => recurringLabel = value);
+                },
+                onSave: _saveExpense,
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         CategoryPieCard(title: 'Category Breakdown', values: _categoryTotals()),
@@ -119,7 +144,10 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               ),
             ),
           ),
-          for (final expense in widget.store.expenses)
+          for (final expense
+              in (showAllExpenses
+                  ? widget.store.expenses
+                  : widget.store.expenses.take(6)))
             Dismissible(
               key: ValueKey(expense.id ?? expense.hashCode),
               direction: DismissDirection.endToStart,
@@ -151,6 +179,18 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                       const Icon(Icons.edit_outlined, size: 18),
                     ],
                   ),
+                ),
+              ),
+            ),
+          if (widget.store.expenses.length > 6)
+            Center(
+              child: TextButton(
+                onPressed: () =>
+                    setState(() => showAllExpenses = !showAllExpenses),
+                child: Text(
+                  showAllExpenses
+                      ? 'Show less'
+                      : 'Show more (${widget.store.expenses.length - 6})',
                 ),
               ),
             ),
@@ -266,7 +306,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       ExpenseEntry(
         amount: amount,
         category: category,
-        date: DateTime.now(),
+        date: expenseDate,
         note: noteController.text.trim(),
         recurringLabel: _normalizeRecurringLabel(recurringLabel),
       ),
@@ -278,7 +318,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Added Rs ${amount.toStringAsFixed(0)} · $category'),
+          content: Text('Added ₹${amount.toStringAsFixed(0)} · $category'),
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
         ),
@@ -286,13 +326,24 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     }
   }
 
+  Future<void> _pickExpenseDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: expenseDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (value != null) setState(() => expenseDate = value);
+  }
+
   Future<void> _showEditExpenseDialog(ExpenseEntry expense) async {
     final result = await showDialog<ExpenseEntry>(
       context: context,
       builder: (context) => _EditExpenseDialog(
         expense: expense,
-        categories: _categories,
+        categories: [..._categories, ...widget.store.customExpenseCategories],
         recurringLabelsByCategory: _recurringLabelsByCategory,
+        customRecurringLabels: widget.store.customRecurringLabels,
       ),
     );
     if (result == null) return;
@@ -402,11 +453,13 @@ class _ExpenseForm extends StatelessWidget {
     required this.noteController,
     required this.category,
     required this.recurringLabel,
+    required this.date,
     required this.categories,
     required this.recurringLabels,
     required this.onCategoryChanged,
     required this.onRecurringChanged,
     required this.onSave,
+    required this.onDateTap,
   });
 
   final GlobalKey<FormState> formKey;
@@ -414,11 +467,13 @@ class _ExpenseForm extends StatelessWidget {
   final TextEditingController noteController;
   final String category;
   final String recurringLabel;
+  final DateTime date;
   final List<String> categories;
   final List<String> recurringLabels;
   final ValueChanged<String> onCategoryChanged;
   final ValueChanged<String> onRecurringChanged;
   final VoidCallback onSave;
+  final VoidCallback onDateTap;
 
   @override
   Widget build(BuildContext context) {
@@ -440,6 +495,12 @@ class _ExpenseForm extends StatelessWidget {
                   prefixIcon: Icon(Icons.currency_rupee),
                 ),
                 validator: _amountValidator,
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onDateTap,
+                icon: const Icon(Icons.calendar_today_outlined),
+                label: Text('Date: ${date.day}/${date.month}/${date.year}'),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -505,11 +566,13 @@ class _EditExpenseDialog extends StatefulWidget {
     required this.expense,
     required this.categories,
     required this.recurringLabelsByCategory,
+    required this.customRecurringLabels,
   });
 
   final ExpenseEntry expense;
   final List<String> categories;
   final Map<String, List<String>> recurringLabelsByCategory;
+  final List<String> customRecurringLabels;
 
   @override
   State<_EditExpenseDialog> createState() => _EditExpenseDialogState();
@@ -635,7 +698,10 @@ class _EditExpenseDialogState extends State<_EditExpenseDialog> {
   }
 
   List<String> _recurringLabelsFor(String category) {
-    return widget.recurringLabelsByCategory[category] ?? const ['None'];
+    return [
+      ...(widget.recurringLabelsByCategory[category] ?? const ['None']),
+      ...widget.customRecurringLabels,
+    ].toSet().toList();
   }
 }
 

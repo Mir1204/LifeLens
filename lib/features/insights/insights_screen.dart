@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_usage_summary.dart';
 import '../../models/lifestyle_entry.dart';
 import '../../models/lifestyle_scores.dart';
-import '../../models/app_usage_summary.dart';
-import '../../services/device_data_service.dart';
 import '../../services/lifelens_store.dart';
 import '../../widgets/trend_chart_card.dart';
 import 'sync_settings_widgets.dart';
@@ -20,14 +19,10 @@ class InsightsScreen extends StatefulWidget {
 }
 
 class _InsightsScreenState extends State<InsightsScreen> {
-  final deviceDataService = DeviceDataService();
   late final TextEditingController sleepController;
   late final TextEditingController stepsController;
   late final TextEditingController screenTimeController;
-  AppUsageSummary? appUsage;
-  bool isReadingHealth = false;
-  bool isReadingUsage = false;
-  String? deviceError;
+  int selectedDays = 7;
 
   @override
   void initState() {
@@ -68,8 +63,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
 
   Widget _buildContent(BuildContext context) {
     final scores = widget.store.calculateScores();
-    final currentUsage = appUsage ?? widget.store.appUsage;
-    final avgSleep = widget.store.health.sleepHours;
+    final currentUsage = widget.store.appUsage;
+    final avgSleep = widget.store.scoreHistory.isEmpty
+        ? widget.store.health.sleepHours
+        : widget.store.scoreHistory
+                  .map((item) => item.sleepHours)
+                  .reduce((a, b) => a + b) /
+              widget.store.scoreHistory.length;
     final todaySpend = widget.store.todaySpending;
 
     return Column(
@@ -93,7 +93,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Avg ${avgSleep.toStringAsFixed(1)} hrs sleep · Rs ${todaySpend.toStringAsFixed(0)}/day',
+                        'Avg ${avgSleep.toStringAsFixed(1)} hrs sleep · ₹${todaySpend.toStringAsFixed(0)} today',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(
                             context,
@@ -103,87 +103,34 @@ class _InsightsScreenState extends State<InsightsScreen> {
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: .1),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: 7,
-                        isDense: true,
-                        iconSize: 16,
-                        icon: Icon(
-                          Icons.keyboard_arrow_down,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 7,
-                            child: Text('Last 7 Days'),
-                          ),
-                          DropdownMenuItem(
-                            value: 30,
-                            child: Text('Last 30 Days'),
-                          ),
-                        ],
-                        onChanged: (val) {},
-                      ),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
               _LifestyleAlertCard(scores: scores, health: widget.store.health),
               const SizedBox(height: 16),
+              Text(
+                'Wellbeing estimate',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'A lifestyle signal, not medical, psychological, or financial advice.',
+              ),
+              const SizedBox(height: 12),
               PredictionExplanationCard(
                 stressRisk: scores.stressRisk,
                 explanations: widget.store.predictionExplanations,
               ),
               const SizedBox(height: 16),
-              SyncStatusCard(store: widget.store),
-              const SizedBox(height: 12),
-              NotificationSettingsCard(store: widget.store),
-              const SizedBox(height: 16),
+              if (widget.store.scoreHistory.length < 7) ...[
+                const _BaselineNotice(),
+                const SizedBox(height: 12),
+              ],
               WellbeingCards(store: widget.store),
               const SizedBox(height: 16),
-              Card(
-                child: ListTile(
-                  leading: Icon(
-                    widget.store.isSyncing
-                        ? Icons.sync
-                        : Icons.cloud_done_outlined,
-                  ),
-                  title: Text(
-                    widget.store.isSyncing
-                        ? 'Syncing health data'
-                        : 'Sync status',
-                  ),
-                  subtitle: Text(
-                    widget.store.syncError ??
-                        (widget.store.lastSyncedAt == null
-                            ? 'Waiting for first secure sync'
-                            : 'Last synced ${widget.store.lastSyncedAt!.toLocal()}'),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: widget.store.isSyncing
-                        ? null
-                        : widget.store.syncWithBackend,
-                  ),
-                ),
-              ),
+              SyncStatusCard(store: widget.store),
               const SizedBox(height: 12),
               Theme(
                 data: Theme.of(
@@ -192,7 +139,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 child: Card(
                   child: ExpansionTile(
                     title: const Text(
-                      'Manual Health Entry',
+                      'Manual health entry',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
@@ -240,54 +187,10 @@ class _InsightsScreenState extends State<InsightsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: isReadingHealth
-                              ? null
-                              : _readHealthConnect,
-                          icon: isReadingHealth
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.health_and_safety),
-                          label: const Text('Read Health Connect'),
-                        ),
+                      Text(
+                        'Health Connect and screen-time data refresh automatically when permission is available.',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: isReadingUsage ? null : _readScreenTime,
-                          icon: isReadingUsage
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.phone_android),
-                          label: const Text('Read Screen Time'),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: deviceDataService.openUsageAccessSettings,
-                        icon: const Icon(Icons.settings),
-                        label: const Text('Open Usage Access Settings'),
-                      ),
-                      if (deviceError != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          deviceError!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -302,11 +205,16 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 const SizedBox(height: 12),
                 const _HealthEmptyState(),
               ],
-              if (currentUsage != null) ...[
-                const SizedBox(height: 12),
-                _MostUsedApps(summary: currentUsage),
-              ],
               const SizedBox(height: 12),
+              _ChartRangePicker(
+                value: selectedDays,
+                onChanged: (value) async {
+                  if (value == selectedDays) return;
+                  setState(() => selectedDays = value);
+                  await widget.store.loadScoreHistory(value);
+                },
+              ),
+              const SizedBox(height: 8),
               TrendChartCard(
                 title: 'Sleep Trend',
                 points: [
@@ -316,7 +224,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                       value: item.sleepHours,
                     ),
                 ],
-                color: const Color(0xFF256D85),
+                color: const Color(0xFF005F85),
                 suffix: 'h',
               ),
               const SizedBox(height: 12),
@@ -331,34 +239,6 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 ],
                 color: const Color(0xFFC8553D),
                 suffix: 'h',
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Backend Ready Payload',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 12),
-                      Text('sleep_hours: ${widget.store.health.sleepHours}'),
-                      Text('steps: ${widget.store.health.steps}'),
-                      Text(
-                        'screen_time_hours: ${widget.store.health.screenTimeHours}',
-                      ),
-                      Text('daily_spending: ${widget.store.todaySpending}'),
-                      Text('calendar_events: ${widget.store.tasks.length}'),
-                      Text(
-                        'high_priority_tasks: ${widget.store.highPriorityTasks}',
-                      ),
-                      Text('total_workload: ${widget.store.totalWorkload}'),
-                    ],
-                  ),
-                ),
               ),
               const SizedBox(height: 24),
             ],
@@ -390,6 +270,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
         screenTimeHours: screenTime,
       ),
     );
+    if (selectedDays != 7) await widget.store.loadScoreHistory(selectedDays);
     FocusScope.of(context).unfocus();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -401,47 +282,46 @@ class _InsightsScreenState extends State<InsightsScreen> {
       );
     }
   }
+}
 
-  Future<void> _readHealthConnect() async {
-    setState(() {
-      isReadingHealth = true;
-      deviceError = null;
-    });
+class _BaselineNotice extends StatelessWidget {
+  const _BaselineNotice();
 
-    try {
-      final entry = await deviceDataService.readHealthConnect(
-        fallback: widget.store.health,
-      );
-      await widget.store.updateHealth(entry);
-      sleepController.text = entry.sleepHours.toStringAsFixed(1);
-      stepsController.text = entry.steps.toString();
-    } catch (error) {
-      setState(() => deviceError = 'Health Connect: $error');
-    } finally {
-      if (mounted) setState(() => isReadingHealth = false);
-    }
-  }
+  @override
+  Widget build(BuildContext context) => Card(
+    color: Theme.of(
+      context,
+    ).colorScheme.secondaryContainer.withValues(alpha: .5),
+    child: const ListTile(
+      leading: Icon(Icons.insights_outlined),
+      title: Text('Building your baseline'),
+      subtitle: Text(
+        'Add data for 7 days for trend-based wellbeing estimates.',
+      ),
+    ),
+  );
+}
 
-  Future<void> _readScreenTime() async {
-    setState(() {
-      isReadingUsage = true;
-      deviceError = null;
-    });
+class _ChartRangePicker extends StatelessWidget {
+  const _ChartRangePicker({required this.value, required this.onChanged});
+  final int value;
+  final ValueChanged<int> onChanged;
 
-    try {
-      final summary = await deviceDataService.readAppUsage();
-      await widget.store.saveAppUsage(summary);
-      screenTimeController.text = summary.totalHours.toStringAsFixed(1);
-      setState(() => appUsage = summary);
-    } catch (error) {
-      setState(
-        () => deviceError =
-            'Usage access is required. Open settings and allow LifeLens.',
-      );
-    } finally {
-      if (mounted) setState(() => isReadingUsage = false);
-    }
-  }
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerRight,
+    child: DropdownButton<int>(
+      value: value,
+      underline: const SizedBox.shrink(),
+      items: const [
+        DropdownMenuItem(value: 7, child: Text('Last 7 days')),
+        DropdownMenuItem(value: 30, child: Text('Last 30 days')),
+      ],
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    ),
+  );
 }
 
 class _TrendsRecoveryCard extends StatelessWidget {
@@ -527,7 +407,7 @@ class _ScreenTimeHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hours = fallbackHours;
+    final hours = summary?.totalHours ?? fallbackHours;
     final updated = summary?.updatedAt;
 
     return Card(
@@ -566,6 +446,9 @@ class _ScreenTimeHero extends StatelessWidget {
   }
 }
 
+// Kept for possible future drill-down; screen-time recommendations are now
+// shown inline rather than rendering a separate app-list module.
+// ignore: unused_element
 class _MostUsedApps extends StatelessWidget {
   const _MostUsedApps({required this.summary});
 
@@ -573,7 +456,15 @@ class _MostUsedApps extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxHours = summary.apps.fold<double>(
+    final apps = summary.apps
+        .where(
+          (app) =>
+              !app.packageName.startsWith('com.android.') &&
+              !app.packageName.startsWith('com.example.'),
+        )
+        .toList();
+    if (apps.isEmpty) return const SizedBox.shrink();
+    final maxHours = apps.fold<double>(
       0.01,
       (m, app) => app.hours > m ? app.hours : m,
     );
@@ -595,10 +486,10 @@ class _MostUsedApps extends StatelessWidget {
           height: 140,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: summary.apps.length,
+            itemCount: apps.length,
             separatorBuilder: (_, __) => const SizedBox(width: 10),
             itemBuilder: (context, i) {
-              final app = summary.apps[i];
+              final app = apps[i];
               final ratio = (app.hours / maxHours).clamp(0.0, 1.0);
               final barColor = _appColor(i);
 
@@ -634,6 +525,11 @@ class _MostUsedApps extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: Theme.of(context).colorScheme.onSurface,
                       ),
+                      maxLines: 1,
+                    ),
+                    Text(
+                      _appCategory(app.packageName),
+                      style: Theme.of(context).textTheme.bodySmall,
                       maxLines: 1,
                     ),
                     const SizedBox(height: 4),
@@ -675,6 +571,24 @@ class _MostUsedApps extends StatelessWidget {
     ];
     return palette[i % palette.length];
   }
+
+  String _appCategory(String packageName) {
+    final value = packageName.toLowerCase();
+    if (RegExp(
+      r'whatsapp|instagram|facebook|snapchat|telegram|twitter|reddit|linkedin',
+    ).hasMatch(value))
+      return 'Social';
+    if (RegExp(
+      r'gmail|docs|drive|slack|teams|zoom|notion|meet',
+    ).hasMatch(value))
+      return 'Work';
+    if (RegExp(r'youtube|netflix|primevideo|spotify|music').hasMatch(value))
+      return 'Entertainment';
+    if (RegExp(r'chrome|firefox|samsung.internet|browser').hasMatch(value))
+      return 'Browser';
+    if (RegExp(r'pay|bank|wallet').hasMatch(value)) return 'Finance';
+    return 'App activity';
+  }
 }
 
 // ── Color-coded lifestyle alert card ──────────────────────────────────────────
@@ -702,7 +616,11 @@ class _LifestyleAlertCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: cardColor,
+        gradient: LinearGradient(
+          colors: [cardColor, cardColor.withValues(alpha: .55)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderColor),
       ),
@@ -712,20 +630,71 @@ class _LifestyleAlertCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                isAllClear
-                    ? Icons.check_circle_outline
-                    : Icons.warning_amber_rounded,
-                color: iconColor,
-                size: 22,
+              CircleAvatar(
+                backgroundColor: iconColor.withValues(alpha: .14),
+                foregroundColor: iconColor,
+                child: Icon(
+                  isAllClear
+                      ? Icons.favorite_outline
+                      : Icons.warning_amber_rounded,
+                ),
               ),
               const SizedBox(width: 8),
-              Text(
-                isAllClear ? 'All Clear' : 'Lifestyle Alerts',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: iconColor,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Today’s wellbeing',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      isAllClear
+                          ? 'Balanced routine today'
+                          : 'A few things need attention',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: iconColor,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  '${scores.stressRisk}/100',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _WellbeingStat(
+                icon: Icons.bedtime_outlined,
+                value: '${health.sleepHours.toStringAsFixed(1)}h',
+                label: 'Sleep',
+              ),
+              _WellbeingStat(
+                icon: Icons.directions_walk_outlined,
+                value: '${health.steps}',
+                label: 'Steps',
+              ),
+              _WellbeingStat(
+                icon: Icons.phone_android_outlined,
+                value: '${health.screenTimeHours.toStringAsFixed(1)}h',
+                label: 'Screen',
               ),
             ],
           ),
@@ -834,6 +803,29 @@ class _LifestyleAlertCard extends StatelessWidget {
 
     return alerts;
   }
+}
+
+class _WellbeingStat extends StatelessWidget {
+  const _WellbeingStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Column(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(height: 3),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    ),
+  );
 }
 
 class _AlertGroup {

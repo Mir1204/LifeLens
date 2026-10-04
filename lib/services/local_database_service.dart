@@ -15,7 +15,7 @@ import 'secure_storage_service.dart';
 class LocalDatabaseService {
   static const databaseName = 'lifelens_secure.db';
   static const _legacyDatabaseName = 'lifelens.db';
-  static const databaseVersion = 9;
+  static const databaseVersion = 10;
 
   Database? _database;
   final SecureStorageService _secureStorage = SecureStorageService();
@@ -186,6 +186,16 @@ class LocalDatabaseService {
         'ALTER TABLE score_snapshots ADD COLUMN total_workload INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (oldVersion < 10) {
+      await _tryExecute(
+        db,
+        'ALTER TABLE planner_tasks ADD COLUMN completed_at TEXT',
+      );
+      await _tryExecute(
+        db,
+        "UPDATE planner_tasks SET completed_at = COALESCE(updated_at, created_at) WHERE is_completed = 1 AND completed_at IS NULL",
+      );
+    }
   }
 
   Future<void> _tryExecute(Database db, String sql) async {
@@ -242,6 +252,7 @@ class LocalDatabaseService {
         time_minutes INTEGER NOT NULL DEFAULT 540,
         note TEXT NOT NULL DEFAULT '',
         reminder_minutes INTEGER,
+        completed_at TEXT,
         FOREIGN KEY(user_id) REFERENCES local_users(user_id) ON DELETE CASCADE
       )
     ''');
@@ -565,6 +576,51 @@ class LocalDatabaseService {
     );
   }
 
+  Future<void> deleteDemoRecords(String userId, List<DateTime> dates) async {
+    final db = await database;
+    final dayKeys = dates.map(_dayKey).toList();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'health_records',
+        where: 'user_id = ? AND source = ?',
+        whereArgs: [userId, 'demo'],
+      );
+      await txn.delete(
+        'expenses',
+        where: 'user_id = ? AND note LIKE ?',
+        whereArgs: [userId, 'Demo:%'],
+      );
+      await txn.delete(
+        'planner_tasks',
+        where: 'user_id = ? AND title LIKE ?',
+        whereArgs: [userId, 'Demo:%'],
+      );
+      await txn.delete(
+        'daily_checkins',
+        where: 'user_id = ? AND note LIKE ?',
+        whereArgs: [userId, 'Demo:%'],
+      );
+      if (dayKeys.isEmpty) return;
+      final placeholders = List.filled(dayKeys.length, '?').join(',');
+      final args = [userId, ...dayKeys];
+      await txn.delete(
+        'score_snapshots',
+        where: 'user_id = ? AND score_date IN ($placeholders)',
+        whereArgs: args,
+      );
+      await txn.delete(
+        'daily_entries',
+        where: 'user_id = ? AND entry_date IN ($placeholders)',
+        whereArgs: args,
+      );
+      await txn.delete(
+        'recommendations',
+        where: 'user_id = ? AND recommendation_date IN ($placeholders)',
+        whereArgs: args,
+      );
+    });
+  }
+
   Future<int> insertTask(String userId, PlannerEntry entry) async {
     final db = await database;
     return db.insert('planner_tasks', {
@@ -701,6 +757,33 @@ class LocalDatabaseService {
     return rows.map(_taskFromRow).toList();
   }
 
+  Future<void> purgeCompletedTasksOlderThanOneMonth(String userId) async {
+    final db = await database;
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 30))
+        .toIso8601String();
+    await db.update(
+      'planner_tasks',
+      {'deleted_at': DateTime.now().toIso8601String()},
+      where:
+          'user_id = ? AND is_completed = 1 AND completed_at IS NOT NULL AND completed_at < ? AND deleted_at IS NULL',
+      whereArgs: [userId, cutoff],
+    );
+  }
+
+  Future<void> purgeExpensesOlderThan31Days(String userId) async {
+    final db = await database;
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 31))
+        .toIso8601String();
+    await db.update(
+      'expenses',
+      {'deleted_at': DateTime.now().toIso8601String()},
+      where: 'user_id = ? AND expense_date < ? AND deleted_at IS NULL',
+      whereArgs: [userId, cutoff],
+    );
+  }
+
   Future<void> softDeleteTask(int id) async {
     final db = await database;
     await db.update(
@@ -717,6 +800,7 @@ class LocalDatabaseService {
       'planner_tasks',
       {
         'is_completed': done ? 1 : 0,
+        'completed_at': done ? DateTime.now().toIso8601String() : null,
         'updated_at': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
@@ -726,7 +810,7 @@ class LocalDatabaseService {
 
   Future<void> insertHealth(String userId, DailyHealthEntry entry) async {
     final db = await database;
-    await db.insert('health_records', {
+    final values = {
       'user_id': userId,
       'record_date': _dayKey(entry.date),
       'sleep_hours': entry.sleepHours,
@@ -734,7 +818,15 @@ class LocalDatabaseService {
       'screen_time_hours': entry.screenTimeHours,
       'source': entry.source,
       'created_at': DateTime.now().toIso8601String(),
-    });
+    };
+    final updated = await db.update(
+      'health_records',
+      values..remove('user_id'),
+      where: 'user_id = ? AND record_date = ?',
+      whereArgs: [userId, _dayKey(entry.date)],
+    );
+    if (updated == 0)
+      await db.insert('health_records', values..['user_id'] = userId);
   }
 
   Future<DailyHealthEntry?> latestHealth(String userId) async {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/lifestyle_scores.dart';
 import '../../services/lifelens_store.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/score_card.dart';
 import '../../widgets/trend_chart_card.dart';
 import '../expenses/expenses_screen.dart';
@@ -15,10 +16,14 @@ class DashboardScreen extends StatefulWidget {
     super.key,
     required this.user,
     required this.onSignOut,
+    this.startFeatureTour = false,
+    this.onFeatureTourComplete,
   });
 
   final AppUser user;
   final VoidCallback onSignOut;
+  final bool startFeatureTour;
+  final Future<void> Function()? onFeatureTourComplete;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -27,6 +32,42 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late final LifeLensStore store = LifeLensStore(user: widget.user);
   int currentIndex = 0;
+  late bool _showFeatureTour = widget.startFeatureTour;
+  var _tourStep = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.destinationNotifier.addListener(
+      _openNotificationDestination,
+    );
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _openNotificationDestination(),
+    );
+  }
+
+  @override
+  void dispose() {
+    NotificationService.destinationNotifier.removeListener(
+      _openNotificationDestination,
+    );
+    super.dispose();
+  }
+
+  void _openNotificationDestination() {
+    final destination = NotificationService.destinationNotifier.value;
+    if (destination == null || !mounted) return;
+    setState(() => currentIndex = destination.tabIndex);
+    NotificationService.destinationNotifier.value = null;
+    if (destination.taskId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Your task reminder is ready.')),
+        );
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,14 +76,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return AnimatedBuilder(
       animation: store,
       builder: (context, _) {
-        final pages = [
-          _HomeDashboard(store: store),
-          ExpensesScreen(store: store),
-          PlannerScreen(store: store),
-          InsightsScreen(store: store),
-          ProfileScreen(store: store, onSignOut: widget.onSignOut),
-        ];
-
         // ── Greeting ──────────────────────────────────────────────────
         final hour = DateTime.now().hour;
         final greeting = hour < 12
@@ -52,7 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : 'Good evening';
         final firstName = store.user.name.split(' ').first;
 
-        return Scaffold(
+        final scaffold = Scaffold(
           appBar: AppBar(
             title: Text('$greeting, $firstName!'),
             actions: [
@@ -74,7 +107,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               children: [
                 _OfflineBanner(isOnline: store.isOnline),
-                Expanded(child: pages[currentIndex]),
+                Expanded(
+                  child: switch (currentIndex) {
+                    0 => _HomeDashboard(store: store),
+                    1 => ExpensesScreen(store: store),
+                    2 => PlannerScreen(store: store),
+                    3 => InsightsScreen(store: store),
+                    _ => ProfileScreen(
+                      store: store,
+                      onSignOut: widget.onSignOut,
+                      onStartWalkthrough: _startFeatureTour,
+                    ),
+                  },
+                ),
               ],
             ),
           ),
@@ -112,17 +157,214 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         );
+        if (!_showFeatureTour) return scaffold;
+        return Stack(
+          children: [
+            scaffold,
+            _FeatureTourOverlay(
+              step: _tourStep,
+              onNext: _nextTourStep,
+              onSkip: _completeTour,
+            ),
+          ],
+        );
       },
+    );
+  }
+
+  Future<void> _nextTourStep() async {
+    if (_tourStep == _FeatureTourOverlay.itemCount - 1) {
+      await _completeTour();
+      return;
+    }
+    setState(() {
+      _tourStep++;
+      currentIndex = _tourStep.clamp(0, 4);
+    });
+  }
+
+  void _startFeatureTour() {
+    setState(() {
+      currentIndex = 0;
+      _tourStep = 0;
+      _showFeatureTour = true;
+    });
+  }
+
+  Future<void> _completeTour() async {
+    if (mounted) setState(() => _showFeatureTour = false);
+    // The tour must close immediately even if writing its completion flag
+    // fails temporarily; the setting is only used to decide auto-start.
+    try {
+      await widget.onFeatureTourComplete?.call();
+    } catch (_) {}
+  }
+}
+
+class _FeatureTourOverlay extends StatelessWidget {
+  const _FeatureTourOverlay({
+    required this.step,
+    required this.onNext,
+    required this.onSkip,
+  });
+
+  final int step;
+  final Future<void> Function() onNext;
+  final Future<void> Function() onSkip;
+
+  static const itemCount = 6;
+
+  static const _items = [
+    (
+      'Today',
+      'Your daily overview: progress, wellbeing signals and the next best action.',
+      Icons.today_outlined,
+    ),
+    (
+      'Money',
+      'Record expenses, create personal categories and monitor budget patterns.',
+      Icons.account_balance_wallet_outlined,
+    ),
+    (
+      'Tasks',
+      'Plan by priority and time, add reminders, and link tasks to Google Calendar. Completed tasks are kept for one month, then automatically removed.',
+      Icons.checklist_outlined,
+    ),
+    (
+      'Trends',
+      'Review sleep, screen time, check-ins and weekly wellbeing patterns.',
+      Icons.show_chart_outlined,
+    ),
+    (
+      'Settings',
+      'Manage privacy and appearance. Health, screen-time, notification and Calendar permissions are requested only when you first use each feature.',
+      Icons.person_outline,
+    ),
+    (
+      'Your data, your wellbeing',
+      'We use your tasks, optional health signals, screen time, spending, and check-ins to create personalised wellbeing estimates and practical recommendations. They are wellbeing signals, not medical advice. You control optional permissions and sync.',
+      Icons.shield_outlined,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final item = _items[step];
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned.fill(
+      child: Material(
+        color: Colors.black.withValues(alpha: .58),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Spacer(),
+              Container(
+                margin: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: scheme.primaryContainer,
+                          foregroundColor: scheme.primary,
+                          child: Icon(item.$3),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            item.$1,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        Text('${step + 1}/$itemCount'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(item.$2),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => onSkip(),
+                          child: const Text('Skip tour'),
+                        ),
+                        const Spacer(),
+                        FilledButton(
+                          onPressed: () => onNext(),
+                          style: FilledButton.styleFrom(
+                            minimumSize: Size.zero,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
+                          ),
+                          child: Text(
+                            step == itemCount - 1 ? 'Finish' : 'Next',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                height: 80,
+                margin: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: scheme.primary, width: 3),
+                ),
+                child: Row(
+                  children: List.generate(
+                    itemCount,
+                    (index) => Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _items[index].$3,
+                            color: index == step
+                                ? scheme.primary
+                                : scheme.outline,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
 // ── Home tab ────────────────────────────────────────────────────────────────
 
-class _HomeDashboard extends StatelessWidget {
+class _HomeDashboard extends StatefulWidget {
   const _HomeDashboard({required this.store});
 
   final LifeLensStore store;
+
+  @override
+  State<_HomeDashboard> createState() => _HomeDashboardState();
+}
+
+class _HomeDashboardState extends State<_HomeDashboard> {
+  int selectedDays = 7;
+
+  LifeLensStore get store => widget.store;
 
   @override
   Widget build(BuildContext context) {
@@ -172,14 +414,27 @@ class _HomeDashboard extends StatelessWidget {
           },
         ),
         const SizedBox(height: 16),
-        _TargetCard(store: store, scores: scores),
-        const SizedBox(height: 12),
         _AiPredictionPanel(store: store, scores: scores),
         const SizedBox(height: 12),
         _RecommendationCard(items: recommendations),
         const SizedBox(height: 12),
-        _SummaryPanel(store: store, scores: scores),
-        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerRight,
+          child: DropdownButton<int>(
+            value: selectedDays,
+            underline: const SizedBox.shrink(),
+            items: const [
+              DropdownMenuItem(value: 7, child: Text('Last 7 days')),
+              DropdownMenuItem(value: 30, child: Text('Last 30 days')),
+            ],
+            onChanged: (value) async {
+              if (value == null || value == selectedDays) return;
+              setState(() => selectedDays = value);
+              await store.loadScoreHistory(value);
+            },
+          ),
+        ),
+        const SizedBox(height: 6),
         TrendChartCard(
           title: 'Productivity Trend',
           points: _productivityTrend(scores),
@@ -245,7 +500,7 @@ class _HomeDashboard extends StatelessWidget {
   List<TrendPoint> _spendingTrend() {
     final now = DateTime.now();
     return [
-      for (var offset = 6; offset >= 0; offset--)
+      for (var offset = selectedDays - 1; offset >= 0; offset--)
         _dailySpendingPoint(now.subtract(Duration(days: offset))),
     ];
   }
@@ -653,7 +908,8 @@ class _AiPredictionPanel extends StatelessWidget {
                 ),
                 _AiChip(
                   label: 'Overspend',
-                  value: '${scores.overspendingScore}/100 - ${scores.overspendingRisk}',
+                  value:
+                      '${scores.overspendingScore}/100 - ${scores.overspendingRisk}',
                   icon: Icons.account_balance_wallet_outlined,
                   color: _riskColor(scores.overspendingRisk),
                 ),
@@ -746,6 +1002,7 @@ Color _riskLabelColor(int value) => _riskScoreColor(value);
 
 // ── Target card ───────────────────────────────────────────────────────────────
 
+// ignore: unused_element
 class _TargetCard extends StatelessWidget {
   const _TargetCard({required this.store, required this.scores});
 
@@ -950,6 +1207,7 @@ class _RecommendationCard extends StatelessWidget {
 
 // ── Summary / Daily inputs panel ─────────────────────────────────────────────
 
+// ignore: unused_element
 class _SummaryPanel extends StatelessWidget {
   const _SummaryPanel({required this.store, required this.scores});
 
@@ -1051,7 +1309,8 @@ class _SummaryPanel extends StatelessWidget {
             _MetricRow(
               icon: Icons.warning_amber,
               label: 'Overspending risk',
-              value: '${scores.overspendingScore}/100 - ${scores.overspendingRisk}',
+              value:
+                  '${scores.overspendingScore}/100 - ${scores.overspendingRisk}',
               valueColor: _riskColor(scores.overspendingRisk),
             ),
           ],
