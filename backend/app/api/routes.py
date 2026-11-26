@@ -226,6 +226,9 @@ def predict_daily_score(payload: DailyPayload, user_id: str = Depends(current_us
     db.commit()
     features = build_rolling_features(db, user_id, today_dict, entry_date)
     features["monthly_income"] = payload.monthly_income
+    features["checkin_mood"] = payload.checkin_mood
+    features["checkin_energy"] = payload.checkin_energy
+    features["checkin_stress"] = payload.checkin_stress
     productivity = calculate_productivity(payload.sleep_hours, payload.steps, payload.screen_time_hours, payload.total_workload)
     financial_health = calculate_financial_health(payload.daily_spending, payload.monthly_budget)
     stress_risk, burnout_label = predict_burnout_risk(features)

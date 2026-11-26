@@ -108,6 +108,8 @@ class _InsightsScreenState extends State<InsightsScreen> {
               const SizedBox(height: 16),
               _LifestyleAlertCard(scores: scores, health: widget.store.health),
               const SizedBox(height: 16),
+              _WeeklyHabitStreaksCard(store: widget.store),
+              const SizedBox(height: 16),
               Text(
                 'Wellbeing estimate',
                 style: Theme.of(
@@ -937,6 +939,94 @@ class _InsightsOfflineBannerState extends State<_InsightsOfflineBanner>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklyHabitStreaksCard extends StatelessWidget {
+  const _WeeklyHabitStreaksCard({required this.store});
+
+  final LifeLensStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final report = store.weeklyReport;
+    final sleepStreak = store.sleepGoalStreak;
+    final screenStreak = store.screenTimeGoalStreak;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.local_fire_department, color: scheme.primary, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Weekly Habits & Streaks',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest.withValues(alpha: .35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Sleep target', style: Theme.of(context).textTheme.labelSmall),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$sleepStreak day${sleepStreak == 1 ? '' : 's'} streak',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest.withValues(alpha: .35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Screen limit', style: Theme.of(context).textTheme.labelSmall),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$screenStreak day${screenStreak == 1 ? '' : 's'} streak',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              report.recommendation,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withValues(alpha: .75),
+              ),
+            ),
+          ],
         ),
       ),
     );

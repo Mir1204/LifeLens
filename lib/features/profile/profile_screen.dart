@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/lifelens_app.dart';
 import '../../models/app_user.dart';
+import '../../services/data_portability_service.dart';
 import '../../services/lifelens_store.dart';
 import '../insights/sync_settings_widgets.dart';
 import '../insights/wellbeing_widgets.dart';
@@ -336,10 +337,69 @@ class _PrivacyCard extends StatelessWidget {
               value: store.backendSyncConsent,
               onChanged: store.saveBackendSyncConsent,
             ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _exportData(context),
+                icon: const Icon(Icons.lock_outline),
+                label: const Text('Export encrypted backup'),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _exportData(BuildContext context) async {
+    final controller = TextEditingController();
+    final passphrase = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Export encrypted backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your backup is encrypted with AES-256-GCM. Choose a passphrase with at least 12 characters to protect it.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Passphrase (min 12 chars)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Export'),
+          ),
+        ],
+      ),
+    );
+    if (passphrase == null) return;
+    if (passphrase.length < 12) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Passphrase must be at least 12 characters.')),
+        );
+      }
+      return;
+    }
+    try {
+      await DataPortabilityService().shareExport(store, passphrase);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
   }
 }
 

@@ -139,7 +139,7 @@ class _CheckInCard extends StatelessWidget {
       color: scheme.primaryContainer.withValues(alpha: .48),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _open(context),
+        onTap: () => _open(context, todayCheckIn),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -189,9 +189,11 @@ class _CheckInCard extends StatelessWidget {
     );
   }
 
-  Future<void> _open(BuildContext context) async {
-    var mood = 3, energy = 3, stress = 3;
-    final note = TextEditingController();
+  Future<void> _open(BuildContext context, [DailyCheckIn? existing]) async {
+    var mood = existing?.mood ?? 3,
+        energy = existing?.energy ?? 3,
+        stress = existing?.stress ?? 3;
+    final note = TextEditingController(text: existing?.note ?? '');
     final entry = await showDialog<DailyCheckIn>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -354,7 +356,7 @@ class _GoalsCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _open(context),
+        onTap: () => _open(context, todayCheckIn),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

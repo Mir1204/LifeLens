@@ -15,12 +15,14 @@ class TrendChartCard extends StatelessWidget {
     required this.points,
     required this.color,
     this.suffix = '',
+    this.yAxisLabel,
   });
 
   final String title;
   final List<TrendPoint> points;
   final Color color;
   final String suffix;
+  final String? yAxisLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +113,7 @@ class TrendChartCard extends StatelessWidget {
                     titlesData: FlTitlesData(
                       leftTitles: AxisTitles(
                         axisNameWidget: Text(
-                          'Hours',
+                          yAxisLabel ?? (suffix.trim().isNotEmpty ? suffix.trim() : 'Value'),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         sideTitles: SideTitles(
@@ -159,15 +161,18 @@ class TrendChartCard extends StatelessWidget {
                             Theme.of(context).colorScheme.inverseSurface,
                         getTooltipItems: (spots) => spots
                             .map(
-                              (spot) => LineTooltipItem(
-                                '${points[spot.x.round()].label}\n${spot.y.toStringAsFixed(1)}$suffix',
-                                TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onInverseSurface,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                              (spot) {
+                                final index = spot.x.round().clamp(0, points.length - 1);
+                                return LineTooltipItem(
+                                  '${points[index].label}\n${spot.y.toStringAsFixed(1)}$suffix',
+                                  TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onInverseSurface,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                );
+                              },
                             )
                             .toList(),
                       ),

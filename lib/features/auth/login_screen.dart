@@ -220,10 +220,15 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                   ),
                                 ),
-                                validator: (value) =>
-                                    value == null || value.length < 4
-                                    ? 'Use at least 8 characters'
-                                    : null,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Enter your password';
+                                  }
+                                  if (isSignup && value.length < 12) {
+                                    return 'Use at least 12 characters';
+                                  }
+                                  return null;
+                                },
                               ),
                               if (errorText != null) ...[
                                 const SizedBox(height: 12),

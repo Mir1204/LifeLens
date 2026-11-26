@@ -208,12 +208,13 @@ class GoogleCalendarService {
   /// Google Calendar requires RFC3339 with a timezone offset. Dart's local
   /// DateTime.toIso8601String() has no offset, which Calendar rejects (400).
   String _rfc3339(DateTime value) {
-    final offset = value.timeZoneOffset;
+    final local = value.toLocal();
+    final offset = local.timeZoneOffset;
     final sign = offset.isNegative ? '-' : '+';
     final hours = offset.inHours.abs().toString().padLeft(2, '0');
     final minutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
-    final local = value.toIso8601String();
-    return '$local$sign$hours:$minutes';
+    final dateStr = local.toIso8601String().replaceAll('Z', '');
+    return '$dateStr$sign$hours:$minutes';
   }
 }
 

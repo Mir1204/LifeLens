@@ -17,6 +17,9 @@ class DailyPayload(BaseModel):
     monthly_income: float | None = Field(default=None, ge=0, le=100_000_000)
     monthly_budget: float | None = Field(default=None, ge=0, le=100_000_000)
     entry_date: date | None = None
+    checkin_mood: int | None = Field(default=None, ge=1, le=5)
+    checkin_energy: int | None = Field(default=None, ge=1, le=5)
+    checkin_stress: int | None = Field(default=None, ge=1, le=5)
 
 
 class ScoreResponse(BaseModel):

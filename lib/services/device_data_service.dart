@@ -11,16 +11,27 @@ class DeviceDataService {
 
   final Health _health = Health();
 
-  Future<DailyHealthEntry> readHealthConnect({
-    required DailyHealthEntry fallback,
+  Future<DailyHealthEntry?> readHealthConnect({
+    DailyHealthEntry? current,
   }) async {
-    await _health.configure();
-    await Permission.activityRecognition.request();
+    try {
+      await _health.configure();
+    } catch (e) {
+      return null;
+    }
+
+    try {
+      await Permission.activityRecognition.request();
+    } catch (_) {}
 
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
+    final todayStart = DateTime(now.year, now.month, now.day);
+    // Sleep typically starts the evening before (e.g., 20:00 - 23:00) and ends today.
+    final sleepQueryStart = todayStart.subtract(const Duration(hours: 14));
+
     final types = [
       HealthDataType.STEPS,
+      HealthDataType.SLEEP_SESSION,
       HealthDataType.SLEEP_ASLEEP,
       HealthDataType.SLEEP_DEEP,
       HealthDataType.SLEEP_LIGHT,
@@ -31,29 +42,61 @@ class DeviceDataService {
       types,
       permissions: types.map((_) => HealthDataAccess.READ).toList(),
     );
-    if (!granted) return fallback;
+    if (!granted) return null;
 
-    final steps = await _health.getTotalStepsInInterval(start, now);
+    final steps = await _health.getTotalStepsInInterval(todayStart, now);
+
+    final sleepTypes = [
+      HealthDataType.SLEEP_SESSION,
+      HealthDataType.SLEEP_ASLEEP,
+      HealthDataType.SLEEP_DEEP,
+      HealthDataType.SLEEP_LIGHT,
+      HealthDataType.SLEEP_REM,
+    ];
+
     final points = await _health.getHealthDataFromTypes(
-      types: types.where((type) => type != HealthDataType.STEPS).toList(),
-      startTime: start,
+      types: sleepTypes,
+      startTime: sleepQueryStart,
       endTime: now,
     );
 
     var sleepMinutes = 0.0;
-    for (final point in _health.removeDuplicates(points)) {
-      final value = point.value;
-      if (value is NumericHealthValue) {
-        sleepMinutes += value.numericValue.toDouble();
-      } else {
-        sleepMinutes += point.dateTo.difference(point.dateFrom).inMinutes;
+    final uniquePoints = _health.removeDuplicates(points);
+
+    // Prefer SLEEP_SESSION if present to avoid double-counting with individual stages.
+    final sessions = uniquePoints
+        .where((point) => point.type == HealthDataType.SLEEP_SESSION)
+        .toList();
+
+    if (sessions.isNotEmpty) {
+      for (final session in sessions) {
+        final duration = session.dateTo.difference(session.dateFrom).inMinutes;
+        if (duration > 0 && duration <= 24 * 60) {
+          sleepMinutes += duration;
+        }
+      }
+    } else {
+      // Otherwise, sum the stage segments (excluding awake intervals)
+      final stages = uniquePoints
+          .where((point) => point.type != HealthDataType.SLEEP_SESSION && point.type != HealthDataType.SLEEP_AWAKE)
+          .toList();
+      for (final point in stages) {
+        final duration = point.dateTo.difference(point.dateFrom).inMinutes;
+        if (duration > 0 && duration <= 24 * 60) {
+          sleepMinutes += duration;
+        }
       }
     }
 
+    final fetchedSleep = sleepMinutes > 0 ? sleepMinutes / 60 : (current?.sleepHours ?? 0.0);
+    final fetchedSteps = steps ?? (current?.steps ?? 0);
+
     return DailyHealthEntry(
-      sleepHours: sleepMinutes > 0 ? sleepMinutes / 60 : fallback.sleepHours,
-      steps: steps ?? fallback.steps,
-      screenTimeHours: fallback.screenTimeHours,
+      sleepHours: fetchedSleep,
+      steps: fetchedSteps,
+      screenTimeHours: current?.screenTimeHours ?? 0.0,
+      source: 'health_connect',
+      date: now,
     );
   }
 

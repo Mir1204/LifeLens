@@ -13,6 +13,9 @@ class PredictionPayload {
     required this.totalWorkload,
     this.monthlyIncome,
     this.monthlyBudget,
+    this.checkinMood,
+    this.checkinEnergy,
+    this.checkinStress,
   });
 
   final DailyHealthEntry health;
@@ -22,6 +25,9 @@ class PredictionPayload {
   final int totalWorkload;
   final double? monthlyIncome;
   final double? monthlyBudget;
+  final int? checkinMood;
+  final int? checkinEnergy;
+  final int? checkinStress;
 
   Map<String, Object> toJson() {
     return {
@@ -37,6 +43,9 @@ class PredictionPayload {
       // The backend uses it to build correct 3-day and 7-day windows.
       'entry_date': _dayKey(health.date),
       if (monthlyBudget != null) 'monthly_budget': monthlyBudget!,
+      if (checkinMood != null) 'checkin_mood': checkinMood!,
+      if (checkinEnergy != null) 'checkin_energy': checkinEnergy!,
+      if (checkinStress != null) 'checkin_stress': checkinStress!,
     };
   }
 

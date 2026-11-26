@@ -622,19 +622,19 @@ class _TodayProgressCard extends StatelessWidget {
         icon: Icons.bedtime_outlined,
         label: 'Sleep',
         value: '${store.health.sleepHours.toStringAsFixed(1)}h',
-        progress: store.health.sleepHours / goals.sleepHours,
+        progress: goals.sleepHours > 0 ? store.health.sleepHours / goals.sleepHours : 0.0,
       ),
       _ProgressMetric(
         icon: Icons.directions_walk_outlined,
         label: 'Steps',
         value: '${store.health.steps}',
-        progress: store.health.steps / goals.steps,
+        progress: goals.steps > 0 ? store.health.steps / goals.steps : 0.0,
       ),
       _ProgressMetric(
         icon: Icons.task_alt_outlined,
         label: 'Tasks',
         value: '$taskDone/$taskTotal',
-        progress: taskTotal == 0 ? 0 : taskDone / taskTotal,
+        progress: taskTotal == 0 ? 0.0 : taskDone / taskTotal,
       ),
     ];
 

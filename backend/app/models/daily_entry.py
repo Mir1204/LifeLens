@@ -1,5 +1,5 @@
 # Path: app/models/daily_entry.py
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Boolean, UniqueConstraint
 
@@ -28,7 +28,7 @@ class DailyEntry(Base):
     high_priority_tasks = Column(Integer, nullable=False)
     total_workload = Column(Integer, nullable=False, default=0)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         UniqueConstraint("user_id", "entry_date", name="uq_user_date"),
@@ -45,7 +45,7 @@ class BackendUser(Base):
     password_hash = Column(String, nullable=True)
     google_subject = Column(String, nullable=True, unique=True, index=True)
     display_name = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class RefreshSession(Base):
@@ -58,5 +58,5 @@ class RefreshSession(Base):
     token_id = Column(String, nullable=False, unique=True, index=True)
     expires_at = Column(DateTime, nullable=False, index=True)
     revoked = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     revoked_at = Column(DateTime, nullable=True)

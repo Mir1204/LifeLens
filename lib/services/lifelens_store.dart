@@ -63,9 +63,10 @@ class LifeLensStore extends ChangeNotifier {
   List<Map<String, Object?>> pendingSyncItems = [];
 
   DailyHealthEntry health = DailyHealthEntry(
-    sleepHours: 6.5,
-    steps: 4300,
-    screenTimeHours: 6.8,
+    sleepHours: 0.0,
+    steps: 0,
+    screenTimeHours: 0.0,
+    source: 'initial',
   );
 
   Future<void> load() async {
@@ -172,7 +173,19 @@ class LifeLensStore extends ChangeNotifier {
     tasks
       ..clear()
       ..addAll(loadedTasks);
-    if (latestHealth != null) health = latestHealth;
+    if (latestHealth != null) {
+      if (_isSameDay(latestHealth.date, DateTime.now())) {
+        health = latestHealth;
+      } else {
+        health = DailyHealthEntry(
+          sleepHours: 0.0,
+          steps: 0,
+          screenTimeHours: 0.0,
+          source: 'unrecorded',
+          date: DateTime.now(),
+        );
+      }
+    }
     appUsage = latestAppUsage;
     scoreHistory = loadedScores;
     weeklyScoreHistory = loadedScores;
@@ -255,37 +268,51 @@ class LifeLensStore extends ChangeNotifier {
   }
 
   Future<void> _autoFetchHealthData() async {
-    DailyHealthEntry newHealth = health;
+    bool hasNewData = false;
+    DailyHealthEntry current = health;
+
     try {
-      newHealth = await _deviceDataService.readHealthConnect(fallback: health);
+      final fetchedHealth = await _deviceDataService.readHealthConnect(current: current);
+      if (fetchedHealth != null) {
+        current = fetchedHealth;
+        hasNewData = true;
+      }
     } catch (e) {
       debugPrint('Health Connect refresh failed: $e');
     }
+
     try {
       final newUsage = await _deviceDataService.readAppUsage();
       appUsage = newUsage;
       await database.replaceScreenTimeApps(user.userId, newUsage);
-      newHealth = DailyHealthEntry(
-        sleepHours: newHealth.sleepHours,
-        steps: newHealth.steps,
+      current = DailyHealthEntry(
+        sleepHours: current.sleepHours,
+        steps: current.steps,
         screenTimeHours: newUsage.totalHours,
         source: 'device_sync',
         date: newUsage.updatedAt,
       );
+      hasNewData = true;
     } catch (e) {
       debugPrint('Screen-time refresh failed: $e');
     }
+
+    // MAKE SURE FETCHED DATA IS ONLY WRITTEN
+    if (!hasNewData) {
+      return;
+    }
+
     final today = DateTime.now();
-    if (!_isSameDay(newHealth.date, today)) {
-      newHealth = DailyHealthEntry(
-        sleepHours: newHealth.sleepHours,
-        steps: newHealth.steps,
-        screenTimeHours: newHealth.screenTimeHours,
-        source: newHealth.source,
+    if (!_isSameDay(current.date, today)) {
+      current = DailyHealthEntry(
+        sleepHours: current.sleepHours,
+        steps: current.steps,
+        screenTimeHours: current.screenTimeHours,
+        source: current.source,
         date: today,
       );
     }
-    health = newHealth;
+    health = current;
     await database.insertHealth(user.userId, health);
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
@@ -530,6 +557,12 @@ class LifeLensStore extends ChangeNotifier {
       final api = PredictionApiService(baseUrl: backendUrl);
       final isUp = await api.healthCheck();
       if (!isUp) throw Exception('Backend is down');
+      final todayCheckIn = checkIns.where((checkIn) {
+        final now = DateTime.now();
+        return checkIn.date.year == now.year &&
+            checkIn.date.month == now.month &&
+            checkIn.date.day == now.day;
+      }).firstOrNull;
       final payload = PredictionPayload(
         health: health,
         dailySpending: spendingForDay(health.date),
@@ -538,6 +571,9 @@ class LifeLensStore extends ChangeNotifier {
         totalWorkload: totalWorkloadForDay(health.date),
         monthlyIncome: user.monthlyIncome,
         monthlyBudget: monthlySpendingBudget > 0 ? monthlySpendingBudget : null,
+        checkinMood: todayCheckIn?.mood,
+        checkinEnergy: todayCheckIn?.energy,
+        checkinStress: todayCheckIn?.stress,
       );
       try {
         remoteScores = await api.predict(payload, accessToken: accessToken);
@@ -728,6 +764,7 @@ class LifeLensStore extends ChangeNotifier {
   }
 
   Future<void> saveCheckIn(DailyCheckIn value) async {
+    remoteScores = null;
     await database.saveCheckIn(user.userId, value);
     checkIns = await database.checkIns(user.userId);
     await database.enqueueSync(
@@ -740,6 +777,7 @@ class LifeLensStore extends ChangeNotifier {
     await recordLocalScoreSnapshot();
     await _persistDailyEntry();
     notifyListeners();
+    await syncWithBackend();
   }
 
   Future<void> saveGoals(UserGoals value) async {
@@ -1201,7 +1239,6 @@ class LifeLensStore extends ChangeNotifier {
   int highPriorityTasksForDay(DateTime day) => tasks
       .where(
         (task) =>
-            !task.isCompleted &&
             task.priority == TaskPriority.high &&
             _isSameDay(task.date, day),
       )
@@ -1210,11 +1247,11 @@ class LifeLensStore extends ChangeNotifier {
   int get totalWorkload => totalWorkloadForDay(DateTime.now());
 
   int taskCountForDay(DateTime day) => tasks
-      .where((task) => !task.isCompleted && _isSameDay(task.date, day))
+      .where((task) => _isSameDay(task.date, day))
       .length;
 
   int totalWorkloadForDay(DateTime day) => tasks
-      .where((task) => !task.isCompleted && _isSameDay(task.date, day))
+      .where((task) => _isSameDay(task.date, day))
       .fold(0, (total, task) => total + task.workload);
 
   LifestyleScores calculateScores() {

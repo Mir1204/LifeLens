@@ -59,8 +59,15 @@ class BackgroundSyncService {
           await database.latestHealth(user.userId) ??
           DailyHealthEntry(sleepHours: 0, steps: 0, screenTimeHours: 0);
       final device = DeviceDataService();
+      bool hasNewData = false;
       try {
-        health = await device.readHealthConnect(fallback: health);
+        final fetched = await device.readHealthConnect(current: health);
+        if (fetched != null) {
+          health = fetched;
+          hasNewData = true;
+        }
+      } catch (_) {}
+      try {
         final usage = await device.readAppUsage();
         await database.replaceScreenTimeApps(user.userId, usage);
         health = DailyHealthEntry(
@@ -70,23 +77,25 @@ class BackgroundSyncService {
           source: 'background_device_sync',
           date: usage.updatedAt,
         );
-      } catch (_) {
-        // Permission can be unavailable in a headless worker; sync the last
-        // safely stored daily values instead of failing the whole job.
+        hasNewData = true;
+      } catch (_) {}
+
+      // MAKE SURE FETCHED DATA IS ONLY WRITTEN
+      if (hasNewData) {
+        final now = DateTime.now();
+        if (health.date.year != now.year ||
+            health.date.month != now.month ||
+            health.date.day != now.day) {
+          health = DailyHealthEntry(
+            sleepHours: health.sleepHours,
+            steps: health.steps,
+            screenTimeHours: health.screenTimeHours,
+            source: health.source,
+            date: now,
+          );
+        }
+        await database.insertHealth(user.userId, health);
       }
-      final now = DateTime.now();
-      if (health.date.year != now.year ||
-          health.date.month != now.month ||
-          health.date.day != now.day) {
-        health = DailyHealthEntry(
-          sleepHours: health.sleepHours,
-          steps: health.steps,
-          screenTimeHours: health.screenTimeHours,
-          source: health.source,
-          date: now,
-        );
-      }
-      await database.insertHealth(user.userId, health);
 
       final tasks = await database.tasks(user.userId);
       final expenses = await database.expenses(user.userId);
@@ -95,7 +104,7 @@ class BackgroundSyncService {
           value.month == health.date.month &&
           value.day == health.date.day;
       final dayTasks = tasks.where(
-        (task) => !task.isCompleted && isSameDay(task.date),
+        (task) => isSameDay(task.date),
       );
       final spending = expenses
           .where((expense) => isSameDay(expense.date))

@@ -169,11 +169,19 @@ def _fallback_stress_risk(features: dict) -> tuple[int, str]:
     Mirrors the Flutter local formula so the API never breaks during early dev.
     """
     sleep_score = max(0.0, min(100.0, features.get("sleep_hours_today", 7.0) / 8 * 100))
+    checkin_stress = features.get("checkin_stress")
+    checkin_energy = features.get("checkin_energy")
+    checkin_mood = features.get("checkin_mood")
+    checkin_adj = 0
+    if checkin_stress is not None and checkin_energy is not None and checkin_mood is not None:
+        checkin_adj = (checkin_stress - 3) * 7 + (3 - checkin_energy) * 4 + (3 - checkin_mood) * 3
+
     value = (
         (100 - sleep_score) * 0.35
         + features.get("screen_time_today", 0.0) * 5
         + features.get("high_priority_tasks_today", 0) * 10
         + features.get("workload_today", 0) * 2
+        + checkin_adj
     )
     score = round(max(0, min(100, value)))
     label = "High" if score >= 70 else "Medium" if score >= 40 else "Low"
@@ -211,28 +219,43 @@ def predict_burnout_risk(features: dict) -> tuple[int, str]:
         trend_row = pd.DataFrame([{k: features.get(k, 0) for k in BURNOUT_FEATURES}])
         trend_high_p, trend_label = _model_high_proba(trend_model, trend_row)
 
+    # ── checkin adjustment ────────────────────────────────────────────────────
+    checkin_stress = features.get("checkin_stress")
+    checkin_energy = features.get("checkin_energy")
+    checkin_mood = features.get("checkin_mood")
+    checkin_adj = 0
+    if checkin_stress is not None and checkin_energy is not None and checkin_mood is not None:
+        checkin_adj = (checkin_stress - 3) * 7 + (3 - checkin_energy) * 4 + (3 - checkin_mood) * 3
+
     # ── combine ───────────────────────────────────────────────────────────────
     if static_label is not None and trend_label is not None:
-        # Weighted ensemble: static 40%, trend 60%
         s_score = _LABEL_SCORE[static_label]
         t_score = _LABEL_SCORE[trend_label]
         combined_label_score = 0.4 * s_score + 0.6 * t_score
         final_label = _SCORE_LABEL[round(combined_label_score)]
 
-        # Numeric 0-100 score = weighted High-class probability
         high_p = 0.4 * static_high_p + 0.6 * trend_high_p
-        numeric_score = round(high_p * 100)
+        if final_label == "High":
+            base_score = 70 + round(high_p * 25)
+        elif final_label == "Medium":
+            base_score = 42 + round(high_p * 24)
+        else:
+            base_score = 15 + round(high_p * 20)
+        numeric_score = max(0, min(100, base_score + checkin_adj))
 
     elif static_label is not None:
         final_label  = static_label
-        numeric_score = round(static_high_p * 100)
+        base_score = 75 if static_label == "High" else 50 if static_label == "Medium" else 25
+        numeric_score = max(0, min(100, base_score + checkin_adj))
 
     elif trend_label is not None:
         final_label   = trend_label
-        numeric_score = round(trend_high_p * 100)
+        base_score = 75 if trend_label == "High" else 50 if trend_label == "Medium" else 25
+        numeric_score = max(0, min(100, base_score + checkin_adj))
 
     else:
-        return _fallback_stress_risk(features)
+        score, label = _fallback_stress_risk(features)
+        return max(0, min(100, score + checkin_adj)), label
 
     return numeric_score, final_label
 
@@ -261,6 +284,7 @@ def predict_overspending_risk(features: dict) -> tuple[int, str]:
             features.get("spending_avg_7d", 1), 1
         )
         label = "High" if spending_ratio > 1.5 else "Medium" if spending_ratio > 1.15 else "Low"
-        return _overspending_score(spending_ratio), label
+        score = round(max(0, min(100, (spending_ratio / 1.5) * 70)))
+        return score, label
 
     raise RuntimeError("Overspending model did not produce a prediction")
