@@ -452,30 +452,16 @@ class _HomeDashboardState extends State<_HomeDashboard> {
   }
 
   _SyncState _syncState() {
-    if (!store.backendSyncConsent) {
-      return const _SyncState(
-        label: 'Consent Required',
-        icon: Icons.lock_outline,
-        color: Color(0xFFB88746),
-      );
-    }
     if (store.lastSyncedAt != null && store.syncError == null) {
       return const _SyncState(
-        label: 'Backend Synced',
-        icon: Icons.cloud_done,
+        label: 'Cloud ML Engine',
+        icon: Icons.cloud_done_outlined,
         color: Color(0xFF287D5A),
       );
     }
-    if (store.syncError != null) {
-      return const _SyncState(
-        label: 'Local Mode',
-        icon: Icons.cloud_off,
-        color: Color(0xFFC8553D),
-      );
-    }
     return const _SyncState(
-      label: 'Local Mode',
-      icon: Icons.phone_android,
+      label: 'Edge AI (On-Device)',
+      icon: Icons.memory,
       color: Color(0xFF256D85),
     );
   }
@@ -848,10 +834,10 @@ class _AiPredictionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final synced = store.lastSyncedAt != null && store.syncError == null;
-    final source = synced ? 'Backend' : 'Local fallback';
+    final source = synced ? 'Cloud ML Engine' : 'Edge AI (On-Device)';
     final syncedAt = store.lastSyncedAt;
     final syncTime = syncedAt == null
-        ? 'Not synced'
+        ? 'Active'
         : '${syncedAt.hour.toString().padLeft(2, '0')}:${syncedAt.minute.toString().padLeft(2, '0')}';
 
     return Card(
@@ -864,9 +850,7 @@ class _AiPredictionPanel extends StatelessWidget {
               children: [
                 Icon(
                   Icons.psychology_outlined,
-                  color: synced
-                      ? const Color(0xFF256D85)
-                      : const Color(0xFFB88746),
+                  color: const Color(0xFF256D85),
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -887,12 +871,12 @@ class _AiPredictionPanel extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _AiChip(
-                  label: 'Source',
+                  label: 'Engine',
                   value: source,
-                  icon: Icons.cloud_done_outlined,
+                  icon: synced ? Icons.cloud_done_outlined : Icons.memory,
                   color: synced
                       ? const Color(0xFF287D5A)
-                      : const Color(0xFFB88746),
+                      : const Color(0xFF256D85),
                 ),
                 _AiChip(
                   label: 'Last sync',

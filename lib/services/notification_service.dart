@@ -30,11 +30,15 @@ class NotificationService {
     // WorkManager starts a headless Flutter engine with no Activity. Android's
     // runtime permission dialog is valid only from the foreground app.
     if (requestPermission) {
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+      try {
+        await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.requestNotificationsPermission();
+      } catch (e) {
+        debugPrint('Notification permission request skipped (no foreground activity): $e');
+      }
     }
   }
 
@@ -121,12 +125,15 @@ class NotificationService {
   }
 
   static Future<bool> requestPermission() async {
-    return await _plugin
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
-            >()
-            ?.requestNotificationsPermission() ??
-        false;
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = await android?.areNotificationsEnabled();
+      if (enabled == true) return true;
+      return await android?.requestNotificationsPermission() ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> showRiskAlerts({

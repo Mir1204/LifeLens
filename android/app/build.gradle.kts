@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.example.lifelens_mobile"
-    compileSdk = 35
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

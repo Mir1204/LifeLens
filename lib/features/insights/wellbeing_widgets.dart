@@ -356,7 +356,7 @@ class _GoalsCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _open(context, todayCheckIn),
+        onTap: () => _open(context),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

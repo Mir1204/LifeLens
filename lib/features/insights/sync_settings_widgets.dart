@@ -43,6 +43,14 @@ class SyncStatusCard extends StatelessWidget {
             Text(
               'Screen-time access: ${store.appUsage == null ? 'Permission needed or not yet read' : 'Last read ${_stamp(store.appUsage!.updatedAt)}'}',
             ),
+            if (store.appUsage == null) ...[
+              const SizedBox(height: 6),
+              OutlinedButton.icon(
+                onPressed: store.requestUsageAccess,
+                icon: const Icon(Icons.settings_outlined, size: 16),
+                label: const Text('Grant Usage Access (Settings)'),
+              ),
+            ],
             if (store.syncError != null ||
                 (store.lastBackgroundSyncError?.isNotEmpty ?? false)) ...[
               const SizedBox(height: 6),

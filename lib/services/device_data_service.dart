@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:health/health.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -21,7 +22,10 @@ class DeviceDataService {
     }
 
     try {
-      await Permission.activityRecognition.request();
+      final status = await Permission.activityRecognition.status;
+      if (!status.isGranted) {
+        await Permission.activityRecognition.request();
+      }
     } catch (_) {}
 
     final now = DateTime.now();
@@ -38,10 +42,21 @@ class DeviceDataService {
       HealthDataType.SLEEP_REM,
     ];
 
-    final granted = await _health.requestAuthorization(
-      types,
-      permissions: types.map((_) => HealthDataAccess.READ).toList(),
-    );
+    bool granted = false;
+    try {
+      final perms = types.map((_) => HealthDataAccess.READ).toList();
+      final hasPerms = await _health.hasPermissions(types, permissions: perms) ?? false;
+      if (hasPerms) {
+        granted = true;
+      } else {
+        granted = await _health.requestAuthorization(
+          types,
+          permissions: perms,
+        );
+      }
+    } catch (e) {
+      debugPrint('Health authorization request skipped: $e');
+    }
     if (!granted) return null;
 
     final steps = await _health.getTotalStepsInInterval(todayStart, now);
@@ -88,7 +103,12 @@ class DeviceDataService {
       }
     }
 
-    final fetchedSleep = sleepMinutes > 0 ? sleepMinutes / 60 : (current?.sleepHours ?? 0.0);
+    // If Health Connect has no sleep and no steps data for today, don't invent data
+    if (sleepMinutes == 0 && steps == null) {
+      return null;
+    }
+
+    final fetchedSleep = sleepMinutes > 0 ? (sleepMinutes / 60.0) : 0.0;
     final fetchedSteps = steps ?? (current?.steps ?? 0);
 
     return DailyHealthEntry(

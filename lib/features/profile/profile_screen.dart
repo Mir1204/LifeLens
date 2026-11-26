@@ -337,6 +337,17 @@ class _PrivacyCard extends StatelessWidget {
               value: store.backendSyncConsent,
               onChanged: store.saveBackendSyncConsent,
             ),
+            if (store.appUsage == null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: store.requestUsageAccess,
+                  icon: const Icon(Icons.security),
+                  label: const Text('Grant Screen Time Usage Access'),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,

@@ -132,8 +132,6 @@ class _InsightsScreenState extends State<InsightsScreen> {
               ],
               WellbeingCards(store: widget.store),
               const SizedBox(height: 16),
-              SyncStatusCard(store: widget.store),
-              const SizedBox(height: 12),
               Theme(
                 data: Theme.of(
                   context,

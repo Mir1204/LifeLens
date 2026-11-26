@@ -35,7 +35,7 @@ class LifeLensStore extends ChangeNotifier {
   bool isLoading = true;
   bool isSyncing = false;
   bool isOnline = true;
-  bool backendSyncConsent = false;
+  bool backendSyncConsent = true;
   bool isTestingBackend = false;
   String? syncError;
   String? backendStatus;
@@ -80,7 +80,7 @@ class LifeLensStore extends ChangeNotifier {
     }
 
     final savedConsent = await database.setting('backend_sync_consent');
-    backendSyncConsent = savedConsent == 'true';
+    backendSyncConsent = savedConsent == null ? true : savedConsent == 'true';
     notificationPreferences = NotificationPreferences(
       stressEnabled:
           (await database.setting('notify_stress_enabled')) != 'false',
@@ -174,7 +174,7 @@ class LifeLensStore extends ChangeNotifier {
       ..clear()
       ..addAll(loadedTasks);
     if (latestHealth != null) {
-      if (_isSameDay(latestHealth.date, DateTime.now())) {
+      if (_isSameDay(latestHealth.date, DateTime.now()) && latestHealth.source != 'demo') {
         health = latestHealth;
       } else {
         health = DailyHealthEntry(
@@ -1083,6 +1083,10 @@ class LifeLensStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> requestUsageAccess() async {
+    await _deviceDataService.openUsageAccessSettings();
+  }
+
   Future<void> clearDemoData({bool notify = true}) async {
     final raw = await database.setting('demo_dates_${user.userId}');
     final dates = _savedStringList(
@@ -1091,6 +1095,14 @@ class LifeLensStore extends ChangeNotifier {
     await database.deleteDemoRecords(user.userId, dates);
     await database.saveSetting('demo_dates_${user.userId}', '[]');
     appUsage = null;
+    health = DailyHealthEntry(
+      sleepHours: 0.0,
+      steps: 0,
+      screenTimeHours: 0.0,
+      source: 'cleared',
+      date: DateTime.now(),
+    );
+    await database.insertHealth(user.userId, health);
     expenses
       ..clear()
       ..addAll(await database.expenses(user.userId));
